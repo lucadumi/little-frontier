@@ -167,6 +167,7 @@ for (const screen of [
       await start.scrollIntoViewIfNeeded()
       await expect(start).toBeInViewport()
       await enterWorld(page)
+      if (screen.touch) await expect(page.locator('[data-ui="build-cards"]')).toBeHidden()
       expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(screen.width)
       const settlement = page.locator('[data-ui="settlement-toggle"]')
       await expect(settlement).toBeInViewport()

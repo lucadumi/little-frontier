@@ -69,14 +69,7 @@ function icon(name: keyof typeof ICONS, extraClass = ''): string {
   return `<svg class="ui-icon ${extraClass}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name]}</svg>`
 }
 
-const BRAND_MARK = `<svg class="brand-mark" viewBox="0 0 64 64" fill="none" aria-hidden="true">
-  <rect x="2" y="2" width="60" height="60" rx="22" fill="#244D3C"/>
-  <circle cx="43" cy="20" r="7" fill="#E5BA62"/>
-  <path d="M12 44 25 23l13 21Z" fill="#C4D6A1"/><path d="m25 23 5 21h8Z" fill="#86AC7C"/>
-  <path d="m26 47 16-19 13 19Z" fill="#78A982"/><path d="m42 28 2 19h11Z" fill="#4D8565"/>
-  <path d="M12 45c12-5 27 8 42 0" stroke="#F5EAD1" stroke-width="3" stroke-linecap="round"/>
-  <path d="M19 49c8-1 15 4 25 1" stroke="#E9C47A" stroke-width="2" stroke-linecap="round"/>
-</svg>`
+const BRAND_MARK = '<img class="brand-mark" src="/brand/little-frontier-logo.png" width="64" height="64" alt="" decoding="async">'
 
 const BUILDING_ART: Record<BuildingType, string> = {
   cottage: `<ellipse cx="56" cy="69" rx="43" ry="11" fill="#DCE4C6"/><path d="m29 41 29-13 27 14v25L58 78 29 63Z" fill="#F7E9C7"/><path d="m58 53 27-11v25L58 78Z" fill="#E6CAA0"/><path d="m23 42 27-25 40 23-32 15Z" fill="#D97E60"/><path d="m23 42 27-25 8 38Z" fill="#F0AA7E"/><path d="m50 17 16 6 24 17-32 15Z" fill="#C96853"/><path d="m37 48 11 5v17l-11-5Z" fill="#557B64"/><path d="m66 54 11-5v10l-11 5Z" fill="#678B78"/><path d="m71 52 1 10m-6-3 11-5" stroke="#F6DC9B" stroke-width="1.8"/><path d="m72 22 6-3 5 3v13l-6 3-5-4Z" fill="#F0DDB7"/><path d="m72 22 6 3 5-3-5-3Z" fill="#A77D65"/><circle cx="24" cy="63" r="7" fill="#81A566"/><circle cx="20" cy="67" r="5" fill="#A0BD7E"/><path d="m46 70 11 6-5 4-12-6Z" fill="#C3AD8A"/>`,

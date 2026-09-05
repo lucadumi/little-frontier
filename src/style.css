@@ -88,7 +88,7 @@ kbd { font: inherit; font-size: var(--type-caption); font-weight: 700; line-heig
 .settlement-open .bottom-zone, .settlement-open .touch-controls,
 .settlement-open .quest-panel, .is-building .quest-panel { visibility: hidden; }
 .ui-icon { width: 20px; height: 20px; flex: 0 0 auto; }
-.brand-mark { width: 48px; height: 48px; flex: 0 0 auto; }
+.brand-mark { display: block; width: 48px; height: 48px; flex: 0 0 auto; object-fit: contain; }
 .brand-subtitle { display: block; font: 600 0.625rem/1.4 var(--font-body); color: var(--ink-soft); margin-top: var(--space-1); }
 .paper-panel { border: 0; background: var(--paper); border-radius: var(--radius-panel); box-shadow: var(--shadow); }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }

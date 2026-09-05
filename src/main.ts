@@ -274,6 +274,7 @@ function bootstrap(): void {
   }
 
   refresh()
+  syncBuildMenu()
   const autosave = window.setInterval(() => { save() }, 8000)
   const onPageHide = () => { save() }
   window.addEventListener('pagehide', onPageHide)

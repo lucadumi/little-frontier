@@ -96,4 +96,16 @@ The interface follows Impeccable's design guidance, with locally served Fraunces
 npm run ui:check
 ```
 
+### Logo source
+
+The tiny-planet logo is modeled and rendered in Blender. The editable scene is `art/little-frontier-logo.blend`; the welcome screen and HUD share `public/brand/little-frontier-logo.png`, with a matching `public/favicon.png`.
+
+To rebuild the transparent PNGs and editable scene from the procedural source:
+
+```sh
+blender --background --factory-startup --threads 3 --python tools/render_logo.py
+```
+
+On macOS, the Blender executable may be at `/Applications/Blender.app/Contents/MacOS/Blender`. The script uses only Blender and Python's standard library, with the system image resizer when available.
+
 This is a single-player prototype, not a production multiplayer strategy service. Online alliances, combat, monetization, and a backend are not included.
