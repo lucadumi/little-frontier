@@ -7,7 +7,7 @@ import { BUILDINGS, SAVE_KEY } from './game/config.ts'
 import { GameEngine, GraphicsUnavailableError } from './game/engine.ts'
 import {
   assignWorker, createInitialState, demolishBuilding, getObjectives, parseSave,
-  SaveValidationError, serializeSave,
+  SaveValidationError, serializeSave, upgradeBuilding,
 } from './game/simulation.ts'
 import type { GameState } from './game/types.ts'
 
@@ -164,13 +164,23 @@ function bootstrap(): void {
       refresh()
       if (result.ok) save()
     },
+    onUpgrade(buildingId) {
+      const result = upgradeBuilding(state, buildingId)
+      ui.showToast(result.message, result.ok ? 'success' : 'error')
+      if (result.ok) {
+        engine.syncBuildings()
+        sound.play('build')
+        refresh()
+        save()
+      }
+    },
     onDemolish(buildingId) {
       const building = state.buildings.find((entry) => entry.id === buildingId)
       if (!building) {
         ui.showToast('This building is no longer in your settlement.', 'error')
         return
       }
-      if (!window.confirm(`Remove this ${BUILDINGS[building.type].name.toLowerCase()}? Half its construction materials will be returned.`)) return
+      if (!window.confirm(`Remove this ${BUILDINGS[building.type].name.toLowerCase()}? Half its construction and upgrade materials will be returned.`)) return
       const result = demolishBuilding(state, buildingId)
       ui.showToast(result.message, result.ok ? 'success' : 'error')
       engine.syncBuildings()

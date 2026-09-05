@@ -1,31 +1,8 @@
 import { expect, test } from '@playwright/test'
-import type { Page } from '@playwright/test'
-import type {} from '../src/main.ts'
 import { createInitialState, serializeSave } from '../src/game/simulation.ts'
 import { PLANET_RADIUS, SAVE_KEY } from '../src/game/config.ts'
 import { sphereFramingDistance } from '../src/game/math.ts'
-
-async function snapshot(page: Page) {
-  return page.evaluate(() => {
-    if (!window.__FRONTIER__) throw new Error('The game did not initialize.')
-    return window.__FRONTIER__.snapshot()
-  })
-}
-
-async function diagnostics(page: Page) {
-  return page.evaluate(() => {
-    if (!window.__FRONTIER__) throw new Error('The renderer did not initialize.')
-    return window.__FRONTIER__.diagnostics()
-  })
-}
-
-async function begin(page: Page) {
-  await page.goto('/')
-  await expect.poll(async () => (await diagnostics(page)).drawCalls).toBeGreaterThan(10)
-  await page.getByRole('button', { name: /begin your frontier|continue your frontier/i }).click()
-  await expect.poll(async () => (await diagnostics(page)).started).toBe(true)
-  await expect.poll(async () => (await diagnostics(page)).cameraDistance).toBeLessThan(9.5)
-}
+import { begin, diagnostics, snapshot } from './helpers.ts'
 
 test('renders an original planet and moves the explorer with radial gravity', async ({ page }) => {
   const errors: string[] = []

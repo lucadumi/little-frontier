@@ -279,8 +279,9 @@ kbd { font: inherit; font-size: var(--type-caption); font-weight: 700; line-heig
 .overview-label .ui-icon { width: 14px; height: 14px; }
 .overview-label > span { color: var(--ink-muted); font-size: 0.625rem; }
 
-.settlement-panel { position: absolute; top: 102px; right: var(--edge); width: 302px; max-height: calc(100% - 157px); overflow-y: auto; padding: 21px 18px 17px; border-radius: var(--radius-panel); scrollbar-width: thin; scrollbar-color: #bbc8a8 transparent; overscroll-behavior: contain; }
+.settlement-panel { position: absolute; top: 102px; right: var(--edge); width: 302px; max-height: calc(100% - 157px); overflow-y: auto; padding: 21px 18px 17px; border-radius: var(--radius-panel); scrollbar-width: thin; scrollbar-color: #bbc8a8 transparent; overscroll-behavior: contain; scroll-padding-top: 4.5rem; }
 .panel-heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 17px; }
+.settlement-panel > .panel-heading { position: sticky; top: 0; z-index: 1; background: var(--paper); padding-bottom: var(--space-2); }
 .panel-heading h2 { font: 750 1.375rem/1.2 var(--font-body); }
 .close-button { width: 29px; height: 29px; border-radius: 10px; border-color: #dfe4d0; background: transparent; box-shadow: none; }
 .close-button .ui-icon { width: 15px; height: 15px; }
@@ -317,6 +318,15 @@ kbd { font: inherit; font-size: var(--type-caption); font-weight: 700; line-heig
 .building-row-copy { min-width: 0; flex: 1; }
 .building-row-copy h4 { font-size: 0.75rem; font-weight: 700; }
 .building-production { font-size: var(--type-caption); line-height: 1.6; color: var(--ink-muted); margin-top: 2px; }
+.building-level { font-size: var(--type-caption); color: var(--ink-soft); font-variant-numeric: tabular-nums; }
+.building-upgrade { display: grid; gap: var(--space-2); margin-top: var(--space-3); }
+.upgrade-benefit { font-size: var(--type-caption); color: var(--ink); font-weight: 700; }
+.upgrade-costs { display: flex; flex-wrap: wrap; gap: var(--space-3); font-size: var(--type-caption); }
+.upgrade-cost { display: inline-flex; align-items: center; gap: 4px; color: var(--ink-soft); font-variant-numeric: tabular-nums; }
+.upgrade-cost .ui-icon { width: 15px; height: 15px; }
+.upgrade-cost.is-missing { color: #9b452c; }
+.upgrade-reason { font-size: var(--type-caption); line-height: 1.5; color: var(--ink-muted); }
+.upgrade-building { justify-self: start; min-height: 44px; padding: var(--space-2) var(--space-3); font-size: var(--type-small); }
 .remove-building { align-self: flex-start; padding: 5px 0 5px 4px; font-size: 0.625rem; background: none; color: var(--ink-soft); text-decoration: underline; text-underline-offset: 3px; }
 .remove-building:hover { color: #ab5f47; }
 .building-row-bottom { display: flex; align-items: center; justify-content: space-between; margin-top: var(--space-2); }

@@ -9,7 +9,7 @@ import { advanceOnSphere, isWater, sphereFramingDistance, surfaceDistance, surfa
 import { animateCharacter, createBuildingModel, createCharacterModel, createSelectionRing, disposeModel } from './models.ts'
 import type { CharacterRig } from './models.ts'
 import { canAfford, gatherResource, getNodeStatus, placeBuilding, tick } from './simulation.ts'
-import type { Building, BuildableType, GameState, Resource, ResourceNode } from './types.ts'
+import type { Building, BuildingLevel, BuildableType, GameState, Resource, ResourceNode } from './types.ts'
 import type { SoundKind } from './audio.ts'
 import { PlanetWorld } from './world.ts'
 
@@ -71,7 +71,7 @@ export class GameEngine {
   private readonly cameraForward = new Vector3()
   private readonly cameraUp = new Vector3(0, 1, 0)
   private readonly cameraTarget = new Vector3()
-  private readonly buildings = new Map<string, Group>()
+  private readonly buildings = new Map<string, { model: Group; level: BuildingLevel }>()
   private readonly villagers: VillagerVisual[] = []
   private readonly selection = new Group()
   private readonly selectionRing = createSelectionRing()
@@ -181,7 +181,7 @@ export class GameEngine {
     this.gatherHeld = false
     this.movement.set(0, 0)
     this.selectBuilding(null)
-    for (const model of this.buildings.values()) {
+    for (const { model } of this.buildings.values()) {
       this.scene.remove(model)
       disposeModel(model)
     }
@@ -286,7 +286,7 @@ export class GameEngine {
   }
 
   syncBuildings(): void {
-    for (const [id, model] of this.buildings) {
+    for (const [id, { model }] of this.buildings) {
       if (!this.state.buildings.some((building) => building.id === id)) {
         this.scene.remove(model)
         disposeModel(model)
@@ -294,13 +294,18 @@ export class GameEngine {
       }
     }
     for (const building of this.state.buildings) {
-      if (this.buildings.has(building.id)) continue
-      const model = createBuildingModel(building.type)
+      const existing = this.buildings.get(building.id)
+      if (existing?.level === building.level) continue
+      if (existing) {
+        this.scene.remove(existing.model)
+        disposeModel(existing.model)
+      }
+      const model = createBuildingModel(building.type, building.level)
       const normal = new Vector3(...building.normal)
       model.position.copy(surfacePoint(normal, 0.015))
       model.quaternion.copy(surfaceQuaternion(normal))
       model.rotateY(building.rotation)
-      this.buildings.set(building.id, model)
+      this.buildings.set(building.id, { model, level: building.level })
       this.scene.add(model)
     }
   }
@@ -316,6 +321,7 @@ export class GameEngine {
     cameraDistance: number
     planetDistance: number
     overview: boolean
+    buildingLevels: { id: string; level: BuildingLevel }[]
     started: boolean
     paused: boolean
   } {
@@ -326,6 +332,7 @@ export class GameEngine {
       drawCalls: this.renderer.info.render.calls, triangles: this.renderer.info.render.triangles,
       cameraDistance: this.distance,
       planetDistance: this.camera.position.length(), overview: this.overview,
+      buildingLevels: Array.from(this.buildings, ([id, visual]) => ({ id, level: visual.level })),
       started: this.started, paused: this.paused,
     }
   }
@@ -505,7 +512,7 @@ export class GameEngine {
     if (!this.paused) {
       this.world.animate(this.visualTime)
       this.updateParticles(delta)
-      const flame = this.buildings.get('hearth')?.getObjectByName('flame')
+      const flame = this.buildings.get('hearth')?.model.getObjectByName('flame')
       if (flame) {
         flame.scale.set(1 + Math.sin(this.visualTime * 9) * 0.08, 1 + Math.sin(this.visualTime * 13) * 0.13, 1)
         flame.rotation.y = this.visualTime * 0.35

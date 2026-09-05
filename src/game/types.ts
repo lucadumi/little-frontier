@@ -2,6 +2,7 @@ export type Vec3 = [number, number, number]
 export type Resource = 'wood' | 'stone' | 'food'
 export type Inventory = Record<Resource, number>
 export type BuildingType = 'hearth' | 'cottage' | 'garden' | 'lumberyard' | 'quarry'
+export type BuildingLevel = 1 | 2 | 3
 export type BuildableType = Exclude<BuildingType, 'hearth'>
 export type NodeKind = 'tree' | 'rock' | 'berries'
 
@@ -19,6 +20,7 @@ export interface BuildingDefinition {
 export interface Building {
   id: string
   type: BuildingType
+  level: BuildingLevel
   normal: Vec3
   rotation: number
   workers: number
@@ -37,7 +39,7 @@ export interface NodeState {
 }
 
 export interface GameState {
-  version: 1
+  version: 2
   time: number
   resources: Inventory
   buildings: Building[]
@@ -61,6 +63,14 @@ export interface ActionResult {
   resource?: Resource
   amount?: number
   buildingId?: string
+}
+
+export interface UpgradeInfo {
+  nextLevel: BuildingLevel | null
+  cost: Inventory | null
+  available: boolean
+  reason: string
+  benefit: string
 }
 
 export interface SimulationEvent {

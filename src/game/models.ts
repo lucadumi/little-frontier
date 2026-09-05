@@ -4,7 +4,7 @@ import {
   PointLight, SphereGeometry, TorusGeometry,
 } from 'three'
 import type { Material } from 'three'
-import type { BuildingType } from './types.ts'
+import type { BuildingLevel, BuildingType } from './types.ts'
 
 const material = (color: number) => new MeshStandardMaterial({ color, roughness: 1, flatShading: true })
 const palette = {
@@ -83,7 +83,7 @@ function flowerBox(parent: Group, x: number, z: number): void {
   }
 }
 
-export function createBuildingModel(type: BuildingType): Group {
+function createBaseBuildingModel(type: BuildingType, level: BuildingLevel): Group {
   const root = new Group()
   root.name = type
   if (type === 'hearth') {
@@ -116,13 +116,14 @@ export function createBuildingModel(type: BuildingType): Group {
   foundation.rotation.y = Math.PI / 8
 
   if (type === 'cottage') {
-    box(root, 1.8, 1.35, 1.55, 0, 0.82, 0, palette.plaster)
+    const loft = (level - 1) * 0.38
+    box(root, 1.8, 1.35 + loft, 1.55, 0, 0.82 + loft / 2, 0, palette.plaster)
     for (const x of [-0.84, 0.84]) {
-      for (const z of [-0.74, 0.74]) box(root, 0.09, 1.38, 0.09, x, 0.83, z, palette.wood)
+      for (const z of [-0.74, 0.74]) box(root, 0.09, 1.38 + loft, 0.09, x, 0.83 + loft / 2, z, palette.wood)
     }
-    box(root, 1.85, 0.09, 1.6, 0, 1.45, 0, palette.wood)
-    addMesh(root, roofGeometry(2.23, 0.83, 1.98), palette.roof, 0, 1.49, 0)
-    box(root, 0.075, 0.075, 2.06, 0, 2.31, 0, palette.roofEdge)
+    box(root, 1.85, 0.09, 1.6, 0, 1.45 + loft, 0, palette.wood)
+    addMesh(root, roofGeometry(2.23, 0.83, 1.98), palette.roof, 0, 1.49 + loft, 0)
+    box(root, 0.075, 0.075, 2.06, 0, 2.31 + loft, 0, palette.roofEdge)
     box(root, 0.44, 0.85, 0.07, -0.23, 0.58, -0.805, palette.teal)
     addMesh(root, new SphereGeometry(0.033, 5, 4), palette.cutWood, -0.1, 0.58, -0.85)
     box(root, 0.43, 0.43, 0.055, 0.49, 1, -0.81, palette.wood)
@@ -130,8 +131,8 @@ export function createBuildingModel(type: BuildingType): Group {
     box(root, 0.035, 0.34, 0.065, 0.49, 1, -0.88, palette.wood)
     box(root, 0.34, 0.035, 0.065, 0.49, 1, -0.88, palette.wood)
     box(root, 0.06, 0.43, 0.42, 0.91, 1, 0.12, palette.window)
-    box(root, 0.27, 0.63, 0.29, 0.56, 2.03, 0.4, palette.stone)
-    box(root, 0.36, 0.11, 0.36, 0.56, 2.39, 0.4, palette.foundation)
+    box(root, 0.27, 0.63, 0.29, 0.56, 2.03 + loft, 0.4, palette.stone)
+    box(root, 0.36, 0.11, 0.36, 0.56, 2.39 + loft, 0.4, palette.foundation)
     box(root, 0.58, 0.15, 0.35, -0.23, 0.13, -0.99, palette.stone)
     flowerBox(root, 0.6, -0.96)
   } else if (type === 'garden') {
@@ -176,6 +177,70 @@ export function createBuildingModel(type: BuildingType): Group {
     for (const x of [-0.1, 0.52]) {
       const wheel = addMesh(root, new CylinderGeometry(0.2, 0.2, 0.09, 8), palette.timber, x, 0.2, -1.24)
       wheel.rotation.x = Math.PI / 2
+    }
+  }
+  return root
+}
+
+export function createBuildingModel(type: BuildingType, level: BuildingLevel = 1): Group {
+  const root = createBaseBuildingModel(type, level)
+  if (level === 1) return root
+  if (type === 'hearth') {
+    box(root, 0.07, 2.4, 0.07, -0.85, 1.2, 0.8, palette.timber)
+    box(root, 0.5, 0.54, 0.035, -1.04, 2.02, 0.8, palette.roof)
+    box(root, 1.75, 0.12, 0.12, 0, 2.38, 0.8, palette.cutWood)
+    if (level === 3) {
+      for (const x of [-0.78, 0.78]) {
+        box(root, 0.06, 1.85, 0.06, x, 0.92, -0.65, palette.timber)
+        box(root, 0.22, 0.3, 0.22, x, 1.85, -0.65, palette.window)
+        addMesh(root, new ConeGeometry(0.21, 0.18, 4), palette.teal, x, 2.09, -0.65)
+      }
+      box(root, 0.4, 0.36, 0.055, 0, 2.11, 0.8, palette.plaster)
+      box(root, 0.15, 0.15, 0.065, 0, 2.11, 0.765, palette.teal).rotation.z = Math.PI / 4
+    }
+  } else if (type === 'cottage') {
+    const loft = (level - 1) * 0.38
+    box(root, 1.85, 0.075, 1.6, 0, 1.47, 0, palette.wood)
+    for (const x of level === 2 ? [0] : [-0.4, 0.4]) {
+      for (const side of [-1, 1]) {
+        box(root, 0.32, 0.26, 0.06, x, 1.25 + loft, side * 0.81, palette.wood)
+        box(root, 0.23, 0.18, 0.065, x, 1.25 + loft, side * 0.85, palette.window)
+      }
+    }
+    addMesh(root, roofGeometry(0.78, 0.2, 0.5), palette.teal, -0.23, 1.1, -0.96)
+    if (level === 3) {
+      box(root, 0.04, 0.42, 0.04, 0, 3.22, 0.12, palette.metal)
+      box(root, 0.4, 0.1, 0.035, 0.08, 3.43, 0.12, palette.cutWood)
+    }
+  } else if (type === 'garden') {
+    for (const z of level === 2 ? [0.88] : [0.88, -0.88]) {
+      for (const x of [-0.85, 0.85]) box(root, 0.07, 1.4, 0.07, x, 0.85, z, palette.wood)
+      for (const y of [0.72, 1.1, 1.5]) box(root, 1.8, 0.05, 0.05, 0, y, z, palette.cutWood)
+      for (let index = 0; index < 6; index++) {
+        const x = -0.68 + index * 0.27
+        const y = 0.8 + index % 3 * 0.23
+        addMesh(root, new DodecahedronGeometry(0.2, 0), palette.leaf, x, y, z)
+        addMesh(root, new DodecahedronGeometry(0.085, 0), palette.pink, x + 0.08, y - 0.08, z - 0.1)
+      }
+    }
+  } else if (type === 'lumberyard') {
+    log(root, -0.05, 0.83, -0.22, 1.3)
+    box(root, 0.58, 0.06, 0.26, -0.63, 1.19, -0.77, palette.cutWood)
+    if (level === 3) {
+      box(root, 1.4, 0.075, 0.55, 0, 1.25, 0.42, palette.wood)
+      for (let index = 0; index < 3; index++) {
+        box(root, 1.25, 0.065, 0.12, 0, 1.33, 0.24 + index * 0.15, palette.cutWood)
+      }
+      addMesh(root, new CylinderGeometry(0.2, 0.2, 0.045, 12), palette.metal, -0.62, 1.35, -0.77).rotation.x = Math.PI / 2
+    }
+  } else {
+    for (let index = 0; index < level; index++) {
+      box(root, 0.4, 0.27, 0.32, -0.5 + index * 0.43, 0.34, -0.81, palette.foundation)
+    }
+    if (level === 3) {
+      box(root, 0.25, 0.26, 0.22, 0.8, 1.67, 0.45, palette.metal)
+      addMesh(root, new CylinderGeometry(0.16, 0.16, 0.1, 8), palette.metal, -0.52, 2.12, 0.45).rotation.x = Math.PI / 2
+      box(root, 0.85, 0.07, 0.52, 0.08, 0.67, -0.79, palette.wood)
     }
   }
   return root

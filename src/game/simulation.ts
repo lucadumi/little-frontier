@@ -2,7 +2,11 @@ import {
   ARRIVAL_INTERVAL,
   BUILDINGS,
   FOOD_PER_PERSON_SECOND,
+  getBuildingInvestment,
+  getBuildingStats,
+  getUpgradeCost,
   HEARTH_NORMAL,
+  HEARTH_UPGRADE_POPULATION,
   MAX_POPULATION,
   NODE_DEFINITIONS,
   PLANET_RADIUS,
@@ -14,6 +18,7 @@ import type {
   ActionResult,
   BuildableType,
   Building,
+  BuildingLevel,
   BuildingType,
   EconomySummary,
   GameState,
@@ -25,6 +30,7 @@ import type {
   Resource,
   ResourceNode,
   SimulationEvent,
+  UpgradeInfo,
   Vec3,
 } from './types.ts'
 
@@ -40,12 +46,13 @@ const VECTOR_EPSILON = 1e-6
 
 export function createInitialState(): GameState {
   return {
-    version: 1,
+    version: 2,
     time: 0,
     resources: { ...STARTING_RESOURCES },
     buildings: [{
       id: 'hearth',
       type: 'hearth',
+      level: 1,
       normal: [...HEARTH_NORMAL],
       rotation: 0,
       workers: 0,
@@ -62,9 +69,9 @@ export function createInitialState(): GameState {
 function production(state: GameState): Inventory {
   const rates: Inventory = { wood: 0, stone: 0, food: 0 }
   for (const building of state.buildings) {
-    const definition = BUILDINGS[building.type]
+    const stats = getBuildingStats(building)
     for (const resource of RESOURCES) {
-      rates[resource] += definition.production[resource] * building.workers
+      rates[resource] += stats.production[resource] * building.workers
     }
   }
   return rates
@@ -74,7 +81,7 @@ export function getEconomy(state: GameState): EconomySummary {
   const rates = production(state)
   rates.food -= state.population * FOOD_PER_PERSON_SECOND
   const housing = Math.min(MAX_POPULATION, state.buildings.reduce(
-    (total, building) => total + BUILDINGS[building.type].beds, 0,
+    (total, building) => total + getBuildingStats(building).beds, 0,
   ))
   const employed = state.buildings.reduce((total, building) => total + building.workers, 0)
   const moraleLabel = state.wellbeing >= 80 ? 'Thriving'
@@ -222,6 +229,54 @@ export function canAfford(resources: Inventory, cost: Inventory): boolean {
     && resources[resource] >= cost[resource])
 }
 
+export function getUpgradeInfo(state: GameState, building: Building): UpgradeInfo {
+  const cost = getUpgradeCost(building.type, building.level)
+  if (!cost) {
+    return { nextLevel: null, cost: null, available: false, reason: 'Fully upgraded.', benefit: 'Maximum level reached' }
+  }
+  const nextLevel = building.level === 1 ? 2 : 3
+  const nextStats = getBuildingStats({ type: building.type, level: nextLevel })
+  let benefit: string
+  if (building.type === 'hearth') benefit = `Unlock level ${nextLevel} buildings`
+  else if (building.type === 'cottage') benefit = `Add one bed (${nextStats.beds} total)`
+  else {
+    const resource = building.type === 'garden' ? 'food' : building.type === 'lumberyard' ? 'wood' : 'stone'
+    const amount = (nextStats.production[resource] * 60).toLocaleString(undefined, { maximumFractionDigits: 1 })
+    benefit = `${amount} ${resource} per worker / min`
+  }
+  let reason = ''
+  if (building.type === 'hearth') {
+    const required = HEARTH_UPGRADE_POPULATION[nextLevel]
+    if (state.population < required) reason = `Welcome ${required} settlers first (${state.population} / ${required}).`
+    else if (state.wellbeing < ARRIVAL_WELLBEING) reason = 'Keep wellbeing at 60% or higher before expanding the hearth.'
+  } else {
+    const hearth = state.buildings.find((entry) => entry.type === 'hearth')
+    if (!hearth || hearth.level < nextLevel) reason = `Upgrade the hearth to level ${nextLevel} first.`
+  }
+  if (!reason && !canAfford(state.resources, cost)) {
+    const missing = RESOURCES.filter((entry) => state.resources[entry] < cost[entry])
+      .map((entry) => `${Math.ceil(cost[entry] - state.resources[entry])} ${entry}`)
+    reason = `Gather ${missing.join(' and ')} first.`
+  }
+  return { nextLevel, cost, available: !reason, reason, benefit }
+}
+
+export function upgradeBuilding(state: GameState, buildingId: string): ActionResult {
+  const building = state.buildings.find((entry) => entry.id === buildingId)
+  if (!building) return { ok: false, message: 'That building could not be found.' }
+  const upgrade = getUpgradeInfo(state, building)
+  if (!upgrade.available || !upgrade.cost || !upgrade.nextLevel) {
+    return { ok: false, message: upgrade.reason }
+  }
+  for (const resource of RESOURCES) state.resources[resource] -= upgrade.cost[resource]
+  building.level = upgrade.nextLevel
+  return {
+    ok: true,
+    message: `${BUILDINGS[building.type].name} reached level ${building.level}.`,
+    buildingId,
+  }
+}
+
 export function getNodeStatus(state: GameState, node: ResourceNode): NodeStatus {
   const definition = NODE_DEFINITIONS[node.kind]
   const saved = Object.hasOwn(state.nodeStates, node.id) ? state.nodeStates[node.id] : undefined
@@ -270,6 +325,10 @@ function isBuildingType(value: unknown): value is BuildingType {
   return value === 'hearth' || isBuildableType(value)
 }
 
+function isBuildingLevel(value: unknown): value is BuildingLevel {
+  return value === 1 || value === 2 || value === 3
+}
+
 function isNodeKind(value: unknown): value is NodeKind {
   return value === 'tree' || value === 'rock' || value === 'berries'
 }
@@ -313,7 +372,7 @@ export function placeBuilding(
   while (usedIds.has(id)) id = `${baseId}-${suffix++}`
 
   for (const resource of RESOURCES) state.resources[resource] -= definition.cost[resource]
-  state.buildings.push({ id, type, normal: [...normal], rotation, workers: 0 })
+  state.buildings.push({ id, type, level: 1, normal: [...normal], rotation, workers: 0 })
   state.stats.buildingsBuilt += 1
   return { ok: true, message: `${definition.name} built.`, buildingId: id }
 }
@@ -344,14 +403,15 @@ export function demolishBuilding(state: GameState, buildingId: string): ActionRe
   if (!building) return { ok: false, message: 'That building could not be found.' }
   if (building.type === 'hearth') return { ok: false, message: 'The founders\' hearth must stay.' }
   const remainingBeds = state.buildings.reduce(
-    (total, entry) => total + (entry.id === buildingId ? 0 : BUILDINGS[entry.type].beds), 0,
+    (total, entry) => total + (entry.id === buildingId ? 0 : getBuildingStats(entry).beds), 0,
   )
   if (Math.min(MAX_POPULATION, remainingBeds) < state.population) {
     return { ok: false, message: 'These beds are needed. Build another cottage before removing this one.' }
   }
   const definition = BUILDINGS[building.type]
+  const investment = getBuildingInvestment(building)
   const refunds = RESOURCES.map((resource) => {
-    const amount = Math.floor(definition.cost[resource] / 2)
+    const amount = Math.floor(investment[resource] / 2)
     state.resources[resource] += amount
     return amount > 0 ? `${amount} ${resource}` : ''
   }).filter(Boolean)
@@ -430,7 +490,8 @@ function validateState(value: unknown): GameState {
     'version', 'time', 'resources', 'buildings', 'population', 'wellbeing',
     'arrivalProgress', 'nodeStates', 'player', 'stats',
   ])
-  if (record.version !== 1) return invalid('version', 'must be 1')
+  if (record.version !== 1 && record.version !== 2) return invalid('version', 'must be 1 or 2')
+  const legacy = record.version === 1
   const time = readNumber(record.time, 'time')
   const resources = readInventory(record.resources, 'resources')
   const population = readInteger(record.population, 'population', MAX_POPULATION)
@@ -442,26 +503,33 @@ function validateState(value: unknown): GameState {
   const ids = new Set<string>()
   const buildings: Building[] = record.buildings.map((entry: unknown, index: number) => {
     const path = `buildings[${index}]`
-    const building = readObject(entry, path, ['id', 'type', 'normal', 'rotation', 'workers'])
+    const building = readObject(entry, path, ['id', 'type', 'normal', 'rotation', 'workers', ...(legacy ? [] : ['level'])])
     const id = readIdentifier(building.id, `${path}.id`)
     if (ids.has(id)) return invalid(`${path}.id`, 'duplicates another building')
     ids.add(id)
     if (!isBuildingType(building.type)) return invalid(`${path}.type`, 'is not a known building type')
+    const level = legacy ? 1 : building.level
+    if (!isBuildingLevel(level)) return invalid(`${path}.level`, 'must be 1, 2, or 3')
     return {
       id,
       type: building.type,
+      level,
       normal: readVector(building.normal, `${path}.normal`),
       rotation: readNumber(building.rotation, `${path}.rotation`, -Infinity),
       workers: readInteger(building.workers, `${path}.workers`, BUILDINGS[building.type].maxWorkers),
     }
   })
-  if (buildings.filter((building) => building.type === 'hearth').length !== 1) {
+  const hearth = buildings.find((building) => building.type === 'hearth')
+  if (!hearth || buildings.filter((building) => building.type === 'hearth').length !== 1) {
     return invalid('buildings', 'must contain exactly one hearth')
+  }
+  if (buildings.some((building) => building.level > hearth.level)) {
+    return invalid('buildings', 'cannot have a higher level than the hearth')
   }
   if (buildings.reduce((total, building) => total + building.workers, 0) > population) {
     return invalid('workers', 'exceed the settlement population')
   }
-  if (buildings.reduce((total, building) => total + BUILDINGS[building.type].beds, 0) < population) {
+  if (buildings.reduce((total, building) => total + getBuildingStats(building).beds, 0) < population) {
     return invalid('population', 'exceeds available housing')
   }
 
@@ -498,7 +566,7 @@ function validateState(value: unknown): GameState {
   }
 
   return {
-    version: 1,
+    version: 2,
     time,
     resources,
     buildings,
@@ -516,11 +584,12 @@ export function serializeSave(state: GameState): string {
 }
 
 export function parseSave(raw: string): GameState {
+  let value: unknown
   try {
-    const value: unknown = JSON.parse(raw)
-    return validateState(value)
+    value = JSON.parse(raw)
   } catch (error) {
-    if (error instanceof SaveValidationError) throw error
-    throw new SaveValidationError('This save is not valid JSON.')
+    if (error instanceof SyntaxError) throw new SaveValidationError('This save is not valid JSON.')
+    throw error
   }
+  return validateState(value)
 }

@@ -41,17 +41,34 @@ Planet view fits the globe to both portrait and landscape screens and temporaril
 
 Trees provide wood, outcrops provide stone, and berry bushes provide food. Exhausted resources regrow after a short time. Building previews show whether there is enough space and whether you can afford construction.
 
-Cottages add two beds. A well-fed, content settlement welcomes another settler every 30 seconds while housing is available. Each arrival uses two food. The hearth houses your first three settlers; the prototype supports up to 18.
+Cottages start with two beds. A well-fed, content settlement welcomes another settler every 30 seconds while housing is available. Each arrival uses two food. The hearth houses your first three settlers; the prototype supports up to 18.
 
-Gardens, lumberyards, and quarries need workers. Open the settlement panel to assign idle settlers. Each building can employ two people. One grower produces 6 food per minute, one woodcutter produces 5 wood per minute, and one stoneworker produces 4 stone per minute. Every settler eats 0.48 food per minute.
+Gardens, lumberyards, and quarries need workers. Open the settlement panel to assign idle settlers. Each building can employ two people. At level 1, one grower produces 6 food per minute, one woodcutter produces 5 wood per minute, and one stoneworker produces 4 stone per minute. Every settler eats 0.48 food per minute.
 
-Food shortages reduce wellbeing and stop immigration. Settlers do not permanently die in this prototype, so gathering berries can always begin a recovery. Removing a building returns half its construction materials and releases its workers. Occupied housing cannot be removed if it would leave settlers without beds.
+Food shortages reduce wellbeing and stop immigration. Settlers do not permanently die in this prototype, so gathering berries can always begin a recovery. Removing a building returns half its construction and upgrade materials and releases its workers. Occupied housing cannot be removed if it would leave settlers without beds.
 
 The five objectives introduce gathering, housing, food production, resource production, and village growth. Play continues after the objectives are complete.
 
+### Upgrading your frontier
+
+Every building can reach level 3. Open the settlement panel to see its next upgrade, exact material cost, and any unmet requirements. Upgrades preserve the building's position and assigned workers, and each tier has a distinct 3D model without needing a larger plot.
+
+The hearth unlocks the same level for other buildings. Level 2 requires five settlers, 60% wellbeing, 24 wood, 16 stone, and 10 food. Level 3 requires eight settlers, 60% wellbeing, 48 wood, 36 stone, and 18 food.
+
+| Building benefit | Level 1 | Level 2 | Level 3 |
+| --- | --- | --- | --- |
+| Cottage beds | 2 | 3 | 4 |
+| Food per grower per minute | 6 | 9 | 12 |
+| Wood per woodcutter per minute | 5 | 7.5 | 10 |
+| Stone per stoneworker per minute | 4 | 6 | 8 |
+
+The hearth always provides three starting beds, and the settlement limit remains 18 people. Workplace upgrades improve each worker's output rather than adding more worker slots.
+
 ## Saving
 
-Progress is automatically saved every eight seconds, after worker changes, and when leaving the page. The pause menu also has a manual save action. Saves stay in this browser's local storage under `little-frontier-save-v1`; they do not sync to another browser or device.
+Progress is automatically saved every eight seconds, after worker changes or upgrades, and when leaving the page. The pause menu also has a manual save action. Saves stay in this browser's local storage under `little-frontier-save-v1`; they do not sync to another browser or device.
+
+Earlier prototype saves migrate automatically to the level-aware save format. Resources, population, workers, exploration position, and progress are preserved; existing buildings begin at level 1.
 
 Time does not advance while paused, while the tab is hidden, or while the game is closed. A fresh start asks before replacing your saved world. A corrupt save is reported rather than silently loaded or reset.
 

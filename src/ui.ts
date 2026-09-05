@@ -1,5 +1,5 @@
-import { ARRIVAL_INTERVAL, BUILDABLE_TYPES, BUILDINGS, DAY_LENGTH, MAX_POPULATION, RESOURCE_NAMES } from './game/config.ts'
-import { canAfford, getEconomy, getObjectives } from './game/simulation.ts'
+import { ARRIVAL_INTERVAL, BUILDABLE_TYPES, BUILDINGS, DAY_LENGTH, getBuildingStats, MAX_POPULATION, RESOURCE_NAMES } from './game/config.ts'
+import { canAfford, getEconomy, getObjectives, getUpgradeInfo } from './game/simulation.ts'
 import type { BuildableType, Building, BuildingType, GameState, Objective, Resource } from './game/types.ts'
 
 export interface UIOptions {
@@ -15,6 +15,7 @@ export interface UICallbacks {
   onRotate(): void
   onGather(held: boolean): void
   onWorker(buildingId: string, change: 1 | -1): void
+  onUpgrade(buildingId: string): void
   onDemolish(buildingId: string): void
   onPauseToggle(): void
   onSoundToggle(): void
@@ -101,6 +102,11 @@ interface BuildingRow {
   element: HTMLElement
   type: BuildingType
   production: HTMLElement
+  level: HTMLElement
+  upgrade: HTMLButtonElement
+  upgradeBenefit: HTMLElement
+  upgradeReason: HTMLElement
+  upgradeCosts: Map<Resource, HTMLElement>
   workers: HTMLElement
   minus: HTMLButtonElement
   plus: HTMLButtonElement
@@ -129,6 +135,7 @@ export class GameUI {
   private gathering = false
   private priorFocus: HTMLElement | null = null
   private buildingStructure = ''
+  private rowSequence = 0
 
   constructor(container: HTMLElement, callbacks: UICallbacks, options: UIOptions) {
     this.root = container
@@ -404,7 +411,7 @@ export class GameUI {
     const next = objectives.find((objective) => !objective.complete)
     text(this.ref('quest-count'), `${completed} / ${objectives.length}`)
     text(this.ref('quest-title'), next?.title ?? 'This little world is yours.')
-    text(this.ref('quest-description'), next?.description ?? 'Every milestone reached. Keep exploring, building, and making a home. Your frontier keeps growing.')
+    text(this.ref('quest-description'), next?.description ?? 'Every milestone reached. Upgrade your hearth to unlock better homes and more productive workplaces, or keep exploring.')
     text(this.ref('quest-next-progress'), next ? this.objectiveProgress(next, state) : 'All milestones complete. Keep playing your way.')
     const progress = this.ref('quest-progress')
     progress.setAttribute('aria-valuenow', String(completed))
@@ -452,7 +459,7 @@ export class GameUI {
     const missing = [
       !conditions.food ? 'gather food or staff a garden' : '',
       !conditions.morale ? 'keep the pantry stocked to lift wellbeing' : '',
-      !conditions.beds ? 'build a cottage for spare beds' : '',
+      !conditions.beds ? 'build or upgrade a cottage for spare beds' : '',
     ].filter(Boolean)
     text(this.ref('arrival-detail'), full
       ? `All ${MAX_POPULATION} settlers are home. Keep tending your thriving frontier.`
@@ -489,15 +496,33 @@ export class GameUI {
     for (const building of state.buildings) {
       const row = this.rows.get(building.id)!
       const definition = BUILDINGS[building.type]
+      const stats = getBuildingStats(building)
+      const upgrade = getUpgradeInfo(state, building)
+      text(row.level, `Level ${building.level}`)
+      row.element.dataset.level = String(building.level)
+      row.upgrade.hidden = upgrade.nextLevel === null
+      row.upgrade.disabled = !upgrade.available
+      text(row.upgrade, `Upgrade to level ${upgrade.nextLevel ?? building.level}`)
+      row.upgrade.title = upgrade.reason || upgrade.benefit
+      text(row.upgradeBenefit, upgrade.benefit)
+      text(row.upgradeReason, upgrade.reason)
+      row.upgradeReason.hidden = !upgrade.reason || upgrade.nextLevel === null
+      for (const [resource, element] of row.upgradeCosts) {
+        const cost = upgrade.cost?.[resource] ?? 0
+        element.hidden = cost === 0
+        text(element.querySelector('span')!, String(cost))
+        element.classList.toggle('is-missing', state.resources[resource] < cost)
+        element.title = `${cost} ${RESOURCE_NAMES[resource].toLowerCase()} needed`
+      }
       text(row.workers, `${building.workers} / ${definition.maxWorkers}`)
       row.minus.disabled = building.workers <= 0
       row.plus.disabled = idle <= 0 || building.workers >= definition.maxWorkers
       row.plus.title = idle <= 0 ? 'No idle settlers available' : building.workers >= definition.maxWorkers ? 'All worker spaces are filled' : `Assign a worker to ${definition.name}`
       if (definition.maxWorkers > 0) {
-        const resource = RESOURCES.find((entry) => definition.production[entry] > 0)!
-        text(row.production, `${rate(definition.production[resource] * building.workers * 60)} ${resource} / min${building.workers === 0 ? ' · needs workers' : ''}`)
+        const resource = RESOURCES.find((entry) => stats.production[entry] > 0)!
+        text(row.production, `${rate(stats.production[resource] * building.workers * 60)} ${resource} / min${building.workers === 0 ? ' · needs workers' : ''}`)
       } else {
-        text(row.production, `${definition.beds} beds${building.type === 'hearth' ? ' · your starting home' : ' · a place to belong'}`)
+        text(row.production, `${stats.beds} beds${building.type === 'hearth' ? ` · unlocks level ${building.level} buildings` : ' · a place to belong'}`)
       }
     }
     text(this.ref('building-count'), `${state.buildings.length} ${state.buildings.length === 1 ? 'place' : 'places'}`)
@@ -508,8 +533,9 @@ export class GameUI {
     const element = document.createElement('article')
     element.className = 'building-row'
     element.dataset.buildingId = building.id
-    element.innerHTML = `<div class="building-row-top"><span class="building-row-art">${buildingArt(building.type)}</span><div class="building-row-copy"><h4></h4><p class="building-production"></p></div></div>
-      <div class="building-row-bottom"><span class="worker-label">Workers</span><div class="worker-stepper"><button class="stepper-button worker-minus" type="button">${icon('minus')}</button><span class="worker-count"></span><button class="stepper-button worker-plus" type="button">${icon('plus')}</button></div></div>`
+    element.innerHTML = `<div class="building-row-top"><span class="building-row-art">${buildingArt(building.type)}</span><div class="building-row-copy"><h4></h4><span class="building-level"></span><p class="building-production"></p></div></div>
+      <div class="building-row-bottom"><span class="worker-label">Workers</span><div class="worker-stepper"><button class="stepper-button worker-minus" type="button">${icon('minus')}</button><span class="worker-count"></span><button class="stepper-button worker-plus" type="button">${icon('plus')}</button></div></div>
+      <div class="building-upgrade"><p class="upgrade-benefit"></p><div class="upgrade-costs" aria-label="Upgrade cost">${RESOURCES.map((resource) => `<span class="upgrade-cost" data-upgrade-cost="${resource}">${icon(resource)}<span></span><span class="sr-only">${RESOURCE_NAMES[resource]}</span></span>`).join('')}</div><p class="upgrade-reason"></p><button class="button button-light upgrade-building" type="button"></button></div>`
     text(element.querySelector('h4')!, definition.name)
     const minus = element.querySelector<HTMLButtonElement>('.worker-minus')!
     const plus = element.querySelector<HTMLButtonElement>('.worker-plus')!
@@ -517,6 +543,19 @@ export class GameUI {
     plus.setAttribute('aria-label', `Assign worker to ${definition.name}`)
     minus.addEventListener('click', () => this.callbacks.onWorker(building.id, -1))
     plus.addEventListener('click', () => this.callbacks.onWorker(building.id, 1))
+    const upgrade = element.querySelector<HTMLButtonElement>('.upgrade-building')!
+    upgrade.setAttribute('aria-label', `Upgrade ${definition.name}`)
+    const descriptionId = `building-upgrade-${++this.rowSequence}`
+    upgrade.setAttribute('aria-describedby', `${descriptionId}-benefit ${descriptionId}-reason`)
+    const upgradeBenefit = element.querySelector<HTMLElement>('.upgrade-benefit')!
+    const upgradeReason = element.querySelector<HTMLElement>('.upgrade-reason')!
+    upgradeBenefit.id = `${descriptionId}-benefit`
+    upgradeReason.id = `${descriptionId}-reason`
+    upgrade.addEventListener('click', () => this.callbacks.onUpgrade(building.id))
+    const upgradeCosts = new Map<Resource, HTMLElement>()
+    for (const resource of RESOURCES) {
+      upgradeCosts.set(resource, element.querySelector<HTMLElement>(`[data-upgrade-cost="${resource}"]`)!)
+    }
     if (definition.maxWorkers === 0) element.querySelector<HTMLElement>('.building-row-bottom')!.hidden = true
     if (building.type !== 'hearth') {
       const remove = document.createElement('button')
@@ -524,13 +563,15 @@ export class GameUI {
       remove.className = 'remove-building'
       remove.textContent = 'Remove'
       remove.setAttribute('aria-label', `Remove ${definition.name}`)
-      remove.title = 'Remove this building and recover half its materials'
+      remove.title = 'Recover half the construction and upgrade materials'
       remove.addEventListener('click', () => this.callbacks.onDemolish(building.id))
       element.querySelector('.building-row-top')!.append(remove)
     }
     return {
       element, type: building.type,
       production: element.querySelector<HTMLElement>('.building-production')!,
+      level: element.querySelector<HTMLElement>('.building-level')!,
+      upgrade, upgradeBenefit, upgradeReason, upgradeCosts,
       workers: element.querySelector<HTMLElement>('.worker-count')!,
       minus, plus,
     }

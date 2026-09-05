@@ -85,14 +85,14 @@ function assertSameSimulation(actual: GameState, expected: GameState): void {
 describe('initial state', () => {
   it('initializes every shared field and copies mutable configuration', () => {
     const state = createInitialState()
-    assert.equal(state.version, 1)
+    assert.equal(state.version, 2)
     assert.equal(state.time, 0)
     assert.equal(state.arrivalProgress, 0)
     assert.equal(state.population, 3)
     assert.equal(state.wellbeing, 100)
     assert.deepEqual(state.resources, STARTING_RESOURCES)
     assert.deepEqual(state.buildings, [{
-      id: 'hearth', type: 'hearth', normal: HEARTH_NORMAL, rotation: 0, workers: 0,
+      id: 'hearth', type: 'hearth', level: 1, normal: HEARTH_NORMAL, rotation: 0, workers: 0,
     }])
     assert.deepEqual(state.player, { normal: START_NORMAL, forward: START_FORWARD })
     assert.deepEqual(state.nodeStates, {})
@@ -230,7 +230,7 @@ describe('construction and workers', () => {
     assert.deepEqual(state.resources, { wood: 0, stone: 2, food: 24 })
     assert.equal(state.stats.buildingsBuilt, 1)
     assert.deepEqual(state.buildings[1], {
-      id: 'building-1', type: 'cottage', normal: [1, 0, 0], rotation: 0.75, workers: 0,
+      id: 'building-1', type: 'cottage', level: 1, normal: [1, 0, 0], rotation: 0.75, workers: 0,
     })
     normal[0] = 0
     assert.deepEqual(state.buildings[1].normal, [1, 0, 0])
@@ -606,7 +606,7 @@ describe('save validation', () => {
     ['primitive root', 1],
     ['missing fields', { version: 1 }],
     ['unknown fields', { ...initial, extra: true }],
-    ['unsupported version', { ...initial, version: 2 }],
+    ['unsupported version', { ...initial, version: 3 }],
     ['negative time', { ...initial, time: -1 }],
     ['string time', { ...initial, time: '1' }],
     ['null time', { ...initial, time: null }],

@@ -1,8 +1,9 @@
-import type { BuildableType, BuildingDefinition, BuildingType, Inventory, NodeKind, Resource, Vec3 } from './types.ts'
+import type { BuildableType, Building, BuildingDefinition, BuildingLevel, BuildingType, Inventory, NodeKind, Resource, Vec3 } from './types.ts'
 
 export const PLANET_RADIUS = 22
 export const WATER_LEVEL = -0.12
 export const DAY_LENGTH = 240
+// Retain the original storage key so earlier worlds can be migrated in place.
 export const SAVE_KEY = 'little-frontier-save-v1'
 export const MAX_POPULATION = 18
 export const ARRIVAL_INTERVAL = 30
@@ -65,6 +66,44 @@ export const BUILDINGS: Record<BuildingType, BuildingDefinition> = {
     maxWorkers: 2,
     production: { wood: 0, stone: 1 / 15, food: 0 },
   },
+}
+
+export const HEARTH_UPGRADE_POPULATION = { 2: 5, 3: 8 } as const
+
+const UPGRADE_COSTS: Record<BuildingType, [Inventory, Inventory]> = {
+  hearth: [{ wood: 24, stone: 16, food: 10 }, { wood: 48, stone: 36, food: 18 }],
+  cottage: [{ wood: 10, stone: 6, food: 0 }, { wood: 18, stone: 10, food: 0 }],
+  garden: [{ wood: 16, stone: 8, food: 0 }, { wood: 28, stone: 16, food: 0 }],
+  lumberyard: [{ wood: 14, stone: 10, food: 0 }, { wood: 24, stone: 18, food: 0 }],
+  quarry: [{ wood: 12, stone: 12, food: 0 }, { wood: 20, stone: 24, food: 0 }],
+}
+
+export function getBuildingStats(building: Pick<Building, 'type' | 'level'>): { beds: number; production: Inventory } {
+  const definition = BUILDINGS[building.type]
+  const multiplier = 1 + (building.level - 1) * 0.5
+  return {
+    beds: definition.beds + (building.type === 'cottage' ? building.level - 1 : 0),
+    production: {
+      wood: definition.production.wood * multiplier,
+      stone: definition.production.stone * multiplier,
+      food: definition.production.food * multiplier,
+    },
+  }
+}
+
+export function getUpgradeCost(type: BuildingType, level: BuildingLevel): Inventory | null {
+  return level === 3 ? null : { ...UPGRADE_COSTS[type][level - 1] }
+}
+
+export function getBuildingInvestment(building: Pick<Building, 'type' | 'level'>): Inventory {
+  const cost = { ...BUILDINGS[building.type].cost }
+  for (let index = 0; index < building.level - 1; index++) {
+    const upgrade = UPGRADE_COSTS[building.type][index]
+    cost.wood += upgrade.wood
+    cost.stone += upgrade.stone
+    cost.food += upgrade.food
+  }
+  return cost
 }
 
 export const NODE_DEFINITIONS: Record<NodeKind, {
