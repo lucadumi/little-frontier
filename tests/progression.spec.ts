@@ -1,23 +1,8 @@
 import { expect, test } from '@playwright/test'
 import { SAVE_KEY } from '../src/game/config.ts'
-import { mapNormal } from '../src/game/math.ts'
-import { assignWorker, createInitialState, placeBuilding, serializeSave } from '../src/game/simulation.ts'
+import { serializeSave } from '../src/game/simulation.ts'
 import { begin, diagnostics, snapshot } from './helpers.ts'
-
-function villageFixture(population = 8) {
-  const state = createInitialState()
-  state.resources = { wood: 1000, stone: 1000, food: 1000 }
-  for (const [x, z] of [[4.8, -1.5], [-4.8, -3.5], [4.8, 3.2]]) {
-    const result = placeBuilding(state, 'cottage', mapNormal(x, z).toArray(), 0)
-    if (!result.ok) throw new Error(result.message)
-  }
-  const garden = placeBuilding(state, 'garden', mapNormal(0, 4.5).toArray(), 0)
-  if (!garden.ok || !garden.buildingId) throw new Error(garden.message)
-  const assigned = assignWorker(state, garden.buildingId, 1)
-  if (!assigned.ok) throw new Error(assigned.message)
-  state.population = population
-  return { state, gardenId: garden.buildingId, cottageId: state.buildings[1].id }
-}
+import { villageFixture } from './fixtures.ts'
 
 test('migrates an existing frontier and upgrades its hearth, homes, workers, and visible models', async ({ page }) => {
   const errors: string[] = []
@@ -60,6 +45,7 @@ test('migrates an existing frontier and upgrades its hearth, homes, workers, and
   await expect(cottage.locator('.building-production')).toContainText('4 beds')
   await expect(garden.locator('.building-production')).toContainText('+12 food / min')
   await expect(garden.locator('.upgrade-building')).toBeHidden()
+  await expect(garden.locator('h4')).toBeFocused()
   await expect(garden.locator('.upgrade-benefit')).toHaveText('Maximum level reached')
   await expect.poll(async () => (await diagnostics(page)).buildingLevels.find((building) => building.id === gardenId)?.level).toBe(3)
   await page.keyboard.press('t')
@@ -88,6 +74,8 @@ test.describe('touch upgrade controls', () => {
     const garden = page.locator(`[data-building-id="${gardenId}"]`)
     await garden.locator('.worker-plus').click()
     await expect(garden.locator('.worker-count')).toHaveText('2 / 2')
+    await expect(page.locator('[data-ui="settlement-feedback"]')).toContainText('worker joined')
+    await expect(page.locator('.toast')).toHaveCount(0)
     await expect(garden.locator('.upgrade-building')).toBeDisabled()
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390)
     const close = page.getByRole('button', { name: 'Close settlement', exact: true })

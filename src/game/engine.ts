@@ -26,7 +26,7 @@ export interface EngineEvents {
   onPlacement(message: string, valid: boolean): void
   onBuildChange(type: BuildableType | null): void
   onBuildMenuToggle(): void
-  onPauseToggle(): void
+  onEscape(): void
   onSettlementToggle(): void
   onOverviewChange(active: boolean): void
   onSound(kind: SoundKind): void
@@ -90,6 +90,8 @@ export class GameEngine {
   private state: GameState
   private started = false
   private paused = false
+  private interfaceOpen = false
+  private failed = false
   private overview = false
   private distance = 43
   private targetDistance = 9
@@ -202,31 +204,44 @@ export class GameEngine {
   }
 
   setPaused(paused: boolean): void {
+    if (this.failed && !paused) return
     this.paused = paused
     this.clearInput()
-    if (!paused) this.canvas.focus({ preventScroll: true })
+    if (!paused && !this.interfaceOpen) this.canvas.focus({ preventScroll: true })
+  }
+
+  setInterfaceOpen(open: boolean): void {
+    if (open !== this.interfaceOpen) {
+      this.interfaceOpen = open
+      this.clearInput()
+    }
+    if (!open && this.started && !this.paused && !this.failed) this.canvas.focus({ preventScroll: true })
   }
 
   setMovement(x: number, y: number): void {
+    if (this.interfaceOpen || this.failed) return
     this.movement.set(x, y).clampLength(0, 1)
   }
 
   setGathering(held: boolean): void {
+    if (held && (this.interfaceOpen || this.failed)) return
     this.gatherHeld = held
     if (held) this.gatherCooldown = 0
   }
 
   jump(): void {
-    if (this.started && !this.paused && this.altitude <= 0.001) this.verticalSpeed = 5.4
+    if (this.started && !this.paused && !this.interfaceOpen && !this.failed && this.altitude <= 0.001) this.verticalSpeed = 5.4
   }
 
   toggleOverview(): void {
+    if (this.failed) return
     this.overview = !this.overview
     this.targetDistance = this.overview ? 43 : 9
     this.events.onOverviewChange(this.overview)
   }
 
   selectBuilding(type: BuildableType | null): void {
+    if (this.failed && type !== null) return
     if (this.ghost) {
       this.scene.remove(this.ghost)
       disposeModel(this.ghost)
@@ -324,6 +339,8 @@ export class GameEngine {
     buildingLevels: { id: string; level: BuildingLevel }[]
     started: boolean
     paused: boolean
+    interfaceOpen: boolean
+    altitude: number
   } {
     return {
       normal: this.normal.toArray(), forward: this.forward.toArray(),
@@ -334,6 +351,7 @@ export class GameEngine {
       planetDistance: this.camera.position.length(), overview: this.overview,
       buildingLevels: Array.from(this.buildings, ([id, visual]) => ({ id, level: visual.level })),
       started: this.started, paused: this.paused,
+      interfaceOpen: this.interfaceOpen, altitude: this.altitude,
     }
   }
 
@@ -360,17 +378,35 @@ export class GameEngine {
       this.lastTime = 0
     }, options)
     window.addEventListener('keydown', (event) => {
-      if (!this.started || event.ctrlKey || event.metaKey || event.altKey) return
+      if (!this.started || this.failed || event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey) return
       const target = event.target
       if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement) return
+      if (target instanceof HTMLElement && target.isContentEditable) return
       if (event.code === 'Escape') {
+        if (event.repeat) {
+          event.preventDefault()
+          return
+        }
         if (document.querySelector('dialog[open]')) return
         event.preventDefault()
         if (this.selectedBuild) this.selectBuilding(null)
-        else this.events.onPauseToggle()
+        else this.events.onEscape()
         return
       }
       if (this.paused) return
+      if (['KeyB', 'KeyT', 'KeyV', 'Digit1', 'Digit2', 'Digit3', 'Digit4'].includes(event.code)) {
+        if (event.repeat) return
+        event.preventDefault()
+        if (event.code === 'KeyB') this.events.onBuildMenuToggle()
+        else if (event.code === 'KeyT') this.events.onSettlementToggle()
+        else if (event.code === 'KeyV') this.toggleOverview()
+        else {
+          const type = BUILDABLE_TYPES[Number(event.code.slice(-1)) - 1]
+          this.selectBuilding(this.selectedBuild === type ? null : type)
+        }
+        return
+      }
+      if (this.interfaceOpen) return
       const movementKeys = ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ShiftLeft', 'ShiftRight']
       if (movementKeys.includes(event.code)) {
         event.preventDefault()
@@ -381,20 +417,12 @@ export class GameEngine {
         event.preventDefault()
         if (this.selectedBuild) this.placeSelected()
         else this.setGathering(true)
-      } else if (event.code === 'Space' && !(target instanceof HTMLButtonElement)) {
+      } else if (event.code === 'Space') {
+        if (target instanceof Element && target.closest('button, summary, a[href], [role="button"]')) return
         event.preventDefault()
         this.jump()
-      } else if (event.code === 'KeyB') {
-        this.events.onBuildMenuToggle()
-      } else if (event.code === 'KeyT') {
-        this.events.onSettlementToggle()
-      } else if (event.code === 'KeyV') {
-        this.toggleOverview()
       } else if (event.code === 'KeyR' || event.code === 'KeyQ') {
         this.rotateBuilding(event.code === 'KeyQ' ? -1 : 1)
-      } else if (/^Digit[1-4]$/.test(event.code)) {
-        const type = BUILDABLE_TYPES[Number(event.code.slice(-1)) - 1]
-        this.selectBuilding(this.selectedBuild === type ? null : type)
       }
     }, options)
     window.addEventListener('keyup', (event) => {
@@ -403,14 +431,14 @@ export class GameEngine {
     }, options)
     this.canvas.addEventListener('contextmenu', (event) => event.preventDefault(), options)
     this.canvas.addEventListener('pointerdown', (event) => {
-      if (!this.started || this.paused || this.drag) return
+      if (!this.started || this.paused || this.failed || this.interfaceOpen || this.drag) return
       this.canvas.focus({ preventScroll: true })
       this.drag = { id: event.pointerId, x: event.clientX, y: event.clientY, startX: event.clientX, startY: event.clientY, button: event.button, moved: false }
       this.canvas.setPointerCapture(event.pointerId)
       if (this.selectedBuild && event.button === 0) this.setPointer(event.clientX, event.clientY)
     }, options)
     this.canvas.addEventListener('pointermove', (event) => {
-      if (!this.started || this.paused) return
+      if (!this.started || this.paused || this.failed || this.interfaceOpen) return
       if (this.drag && this.drag.id === event.pointerId) {
         const dx = event.clientX - this.drag.x
         const dy = event.clientY - this.drag.y
@@ -436,7 +464,7 @@ export class GameEngine {
     this.canvas.addEventListener('pointerup', releasePointer, options)
     this.canvas.addEventListener('pointercancel', releasePointer, options)
     this.canvas.addEventListener('wheel', (event) => {
-      if (!this.started || this.paused) return
+      if (!this.started || this.paused || this.failed || this.interfaceOpen) return
       event.preventDefault()
       this.targetDistance = Math.max(6.5, Math.min(48, this.targetDistance + event.deltaY * 0.015))
       const overview = this.targetDistance > 28
@@ -447,6 +475,7 @@ export class GameEngine {
     }, { ...options, passive: false })
     this.canvas.addEventListener('webglcontextlost', (event) => {
       event.preventDefault()
+      this.failed = true
       this.setPaused(true)
       this.events.onFatal('The graphics context was lost. Reload this page to continue.')
     }, options)
@@ -478,7 +507,7 @@ export class GameEngine {
   private frame(timestamp: number): void {
     const delta = this.lastTime === 0 ? 0 : Math.min((timestamp - this.lastTime) / 1000, 0.25)
     this.lastTime = timestamp
-    if (document.hidden) return
+    if (document.hidden || this.failed) return
     this.visualTime += delta
     const active = this.started && !this.paused
     if (active) {

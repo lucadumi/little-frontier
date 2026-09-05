@@ -18,6 +18,10 @@ export async function diagnostics(page: Page) {
 
 export async function begin(page: Page) {
   await page.goto('/')
+  await enterWorld(page)
+}
+
+export async function enterWorld(page: Page) {
   await page.waitForFunction(() => {
     const game = window.__FRONTIER__
     return game !== undefined && game.diagnostics().drawCalls > 10

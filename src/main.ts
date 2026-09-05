@@ -25,23 +25,24 @@ interface LoadedGame {
   hasSave: boolean
   loadError?: string
   unreadableSave: boolean
+  savingAvailable: boolean
 }
 
 function loadGame(): LoadedGame {
   try {
     const raw = localStorage.getItem(SAVE_KEY)
-    if (raw === null) return { state: createInitialState(), hasSave: false, unreadableSave: false }
-    return { state: parseSave(raw), hasSave: true, unreadableSave: false }
+    if (raw === null) return { state: createInitialState(), hasSave: false, unreadableSave: false, savingAvailable: true }
+    return { state: parseSave(raw), hasSave: true, unreadableSave: false, savingAvailable: true }
   } catch (error) {
     if (error instanceof SaveValidationError) {
       return {
-        state: createInitialState(), hasSave: false, unreadableSave: true,
+        state: createInitialState(), hasSave: false, unreadableSave: true, savingAvailable: true,
         loadError: 'Your saved frontier could not be read. Starting a new frontier will ask before replacing it.',
       }
     }
     if (error instanceof DOMException) {
       return {
-        state: createInitialState(), hasSave: false, unreadableSave: false,
+        state: createInitialState(), hasSave: false, unreadableSave: false, savingAvailable: false,
         loadError: 'This browser is blocking local saves. You can play, but your progress may be lost when this tab closes.',
       }
     }
@@ -64,10 +65,11 @@ function bootstrap(): void {
   let state = loaded.state
   let started = false
   let paused = false
-  let buildMenuOpen = true
+  let buildMenuOpen = !window.matchMedia('(pointer: coarse)').matches
   let overviewActive = false
-  let buildMenuBeforeOverview = true
+  let buildingSelected = false
   let settlementOpen = false
+  let soundPending = false
   let saveErrorShown = false
   let needsSaveReplacementConsent = loaded.unreadableSave
   let completedObjectives = new Set(getObjectives(state).filter((objective) => objective.complete).map((objective) => objective.id))
@@ -77,8 +79,8 @@ function bootstrap(): void {
   const setPaused = (value: boolean) => {
     if (!started) return
     paused = value
-    engine.setPaused(value)
     ui.setPaused(value)
+    engine.setPaused(value)
   }
 
   const save = (manual = false): boolean => {
@@ -110,24 +112,43 @@ function bootstrap(): void {
     }
   }
 
-  const toggleBuildMenu = () => {
-    buildMenuOpen = !buildMenuOpen
-    if (overviewActive) buildMenuBeforeOverview = buildMenuOpen
-    ui.setBuildMenu(buildMenuOpen)
-    if (!buildMenuOpen) engine.selectBuilding(null)
+  const syncBuildMenu = () => {
+    ui.setBuildMenu(buildMenuOpen && !overviewActive && !settlementOpen && !buildingSelected)
   }
 
-  const toggleSettlement = () => {
-    settlementOpen = !settlementOpen
+  const setSettlementOpen = (open: boolean) => {
+    settlementOpen = open
     ui.showSettlement(settlementOpen)
+    engine.setInterfaceOpen(open)
+    syncBuildMenu()
     refresh()
   }
 
+  const toggleBuildMenu = () => {
+    if (settlementOpen || overviewActive || buildingSelected) {
+      if (settlementOpen) setSettlementOpen(false)
+      if (overviewActive) engine.toggleOverview()
+      if (buildingSelected) engine.selectBuilding(null)
+      buildMenuOpen = true
+    } else {
+      buildMenuOpen = !buildMenuOpen
+    }
+    syncBuildMenu()
+  }
+
+  const toggleSettlement = () => {
+    if (!settlementOpen) engine.selectBuilding(null)
+    setSettlementOpen(!settlementOpen)
+  }
+
   const toggleSound = async () => {
+    if (soundPending) return
     if (typeof AudioContext === 'undefined') {
       ui.showToast('This browser does not support game audio.', 'error')
       return
     }
+    soundPending = true
+    ui.setSoundPending(true)
     try {
       await sound.setEnabled(!sound.enabled)
       ui.setSoundEnabled(sound.enabled)
@@ -135,6 +156,9 @@ function bootstrap(): void {
     } catch (error) {
       if (!(error instanceof DOMException)) throw error
       ui.showToast(`Sound could not start: ${error.message}`, 'error')
+    } finally {
+      soundPending = false
+      ui.setSoundPending(false)
     }
   }
 
@@ -196,17 +220,18 @@ function bootstrap(): void {
       if (!window.confirm('Start a fresh frontier? This replaces your current world and saved progress. This cannot be undone.')) return
       state = createInitialState()
       completedObjectives = new Set()
+      buildMenuOpen = !window.matchMedia('(pointer: coarse)').matches
       engine.replaceState(state)
-      settlementOpen = false
-      ui.showSettlement(false)
+      setSettlementOpen(false)
       setPaused(false)
       refresh()
+      syncBuildMenu()
       save()
       ui.showToast('A new little world, ready for a fresh beginning.', 'success')
     },
     onMove: (x, y) => engine.setMovement(x, y),
     onJump: () => engine.jump(),
-  }, { hasSave: loaded.hasSave, loadError: loaded.loadError })
+  }, { hasSave: loaded.hasSave, loadError: loaded.loadError, savingAvailable: loaded.savingAvailable })
 
   try {
     engine = new GameEngine(canvas, state, {
@@ -215,28 +240,26 @@ function bootstrap(): void {
       onInteraction: (prompt) => ui.setInteraction(prompt),
       onPlacement: (message, valid) => ui.setPlacementStatus(message, valid),
       onBuildChange(type) {
+        buildingSelected = type !== null
+        if (type && settlementOpen) setSettlementOpen(false)
         if (type && overviewActive) engine.toggleOverview()
         ui.setBuildSelection(type)
-        if (type && !buildMenuOpen) {
-          buildMenuOpen = true
-          ui.setBuildMenu(true)
-        }
+        if (type) buildMenuOpen = true
+        syncBuildMenu()
+        engine.setInterfaceOpen(settlementOpen)
       },
       onBuildMenuToggle: toggleBuildMenu,
-      onPauseToggle: () => setPaused(!paused),
+      onEscape() {
+        if (settlementOpen) setSettlementOpen(false)
+        else setPaused(!paused)
+      },
       onSettlementToggle: toggleSettlement,
       onOverviewChange(active) {
         if (active === overviewActive) return
         overviewActive = active
         ui.setOverview(active)
-        if (active) {
-          buildMenuBeforeOverview = buildMenuOpen
-          buildMenuOpen = false
-          engine.selectBuilding(null)
-        } else {
-          buildMenuOpen = buildMenuBeforeOverview
-        }
-        ui.setBuildMenu(buildMenuOpen)
+        if (active) engine.selectBuilding(null)
+        syncBuildMenu()
       },
       onSound: (kind) => sound.play(kind),
       onFatal(message) {
@@ -265,6 +288,7 @@ function bootstrap(): void {
       save()
       window.clearInterval(autosave)
       window.removeEventListener('pagehide', onPageHide)
+      ui.dispose()
       engine.dispose()
       delete window.__FRONTIER__
     })

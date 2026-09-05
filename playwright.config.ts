@@ -8,7 +8,7 @@ export default defineConfig({
   expect: { timeout: 10_000 },
   reporter: 'list',
   use: {
-    baseURL: 'http://127.0.0.1:5178',
+    baseURL: 'http://127.0.0.1:5180',
     viewport: { width: 1440, height: 900 },
     deviceScaleFactor: 1,
     screenshot: 'only-on-failure',
@@ -18,9 +18,10 @@ export default defineConfig({
     },
   },
   webServer: {
-    command: 'npm run dev -- --host 127.0.0.1 --port 5178 --strictPort',
-    url: 'http://127.0.0.1:5178',
-    reuseExistingServer: !process.env.CI,
+    command: 'npm run dev -- --host 127.0.0.1 --port 5180 --strictPort',
+    url: 'http://127.0.0.1:5180',
+    env: { FRONTIER_E2E: '1' },
+    reuseExistingServer: false,
     timeout: 30_000,
   },
 })

@@ -25,15 +25,17 @@ Open the local URL printed by Vite. A browser with WebGL 2 and hardware accelera
 | Turn the camera | Drag on the world with either mouse button |
 | Zoom | Mouse wheel |
 | Gather a nearby resource | Hold E |
-| Show or hide construction | B |
+| Show or hide construction choices | B |
 | Select a building | 1, 2, 3, 4 |
 | Place a building | Click the ground or press E |
 | Rotate a building | Q or R |
-| Cancel construction / pause | Escape |
+| Cancel construction, close settlement, or pause | Escape |
 | Open the settlement panel | T |
 | Switch between close and planet views | V |
 
 Touch devices have an analog movement stick, gather and jump buttons, and drag-to-look camera controls. Move the stick a little for careful positioning or to its edge for full walking speed.
+
+On touch screens, construction choices start folded away. Tap Build to open them. Choosing a building leaves only the placement controls visible; canceling or finishing returns to the choices. Your explorer stays put while you manage the settlement, but workers and resource production keep running.
 
 Planet view fits the globe to both portrait and landscape screens and temporarily folds the build dock away. Returning to your explorer restores the dock; selecting a building also returns to the close view.
 

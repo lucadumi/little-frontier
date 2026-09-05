@@ -5,6 +5,7 @@ import type { BuildableType, Building, BuildingType, GameState, Objective, Resou
 export interface UIOptions {
   hasSave: boolean
   loadError?: string
+  savingAvailable?: boolean
 }
 
 export interface UICallbacks {
@@ -101,6 +102,7 @@ function rate(value: number): string {
 interface BuildingRow {
   element: HTMLElement
   type: BuildingType
+  heading: HTMLHeadingElement
   production: HTMLElement
   level: HTMLElement
   upgrade: HTMLButtonElement
@@ -121,14 +123,18 @@ export class GameUI {
   private readonly toastStack: HTMLElement
   private readonly rows = new Map<string, BuildingRow>()
   private readonly objectiveRows = new Map<string, HTMLElement>()
-  private readonly toastTimers = new Map<HTMLElement, number>()
+  private readonly toastTimers = new Map<HTMLElement, number | undefined>()
+  private feedbackTimer: number | undefined
   private readonly refs = new Map<string, HTMLElement>()
+  private readonly lifecycle = new AbortController()
+  private readonly layoutObserver: ResizeObserver
   private selectedBuild: BuildableType | null = null
   private interaction: InteractionPrompt | null = null
   private placementMessage: string | null = null
   private placementValid = false
   private started = false
   private paused = false
+  private settlementOpen = false
   private fatal = false
   private joystickPointer: number | null = null
   private gatherPointer: number | null = null
@@ -155,7 +161,7 @@ export class GameUI {
             ${icon('warning')}<div><strong>This world needs a little help.</strong><p data-ui="fatal-message"></p><p>Try a browser with WebGL enabled, then reload this page.</p></div>
           </div>
           <button class="button button-primary start-button" data-ui="start" type="button"><span data-ui="start-label">Begin your frontier</span>${icon('arrow')}</button>
-          <p class="welcome-save">${icon('save')}Autosaves on this device. Pick up where you left off.</p>
+          <p class="welcome-save">${icon('save')}<span data-ui="welcome-save-status">Autosaves on this device. Pick up where you left off.</span></p>
           <p class="welcome-controls desktop-hint"><kbd>WASD</kbd> wander <span>·</span> drag to look <span>·</span> hold <kbd>E</kbd> to gather</p>
           <p class="welcome-controls touch-hint">Drag to look. Use the joystick to wander.<br>Hold Gather when you find a resource.</p>
         </div>
@@ -163,7 +169,7 @@ export class GameUI {
       </section>
 
       <div class="game-interface" data-ui="game" hidden>
-        <header class="topbar">
+        <header class="topbar" data-ui="topbar">
           <div class="hud-brand">${BRAND_MARK}<div><span class="brand-name">Little Frontier</span><span class="brand-subtitle">Meadowlands</span></div></div>
           <div class="hud-center">
             <div class="resource-strip" role="group" aria-label="Settlement resources">
@@ -225,11 +231,11 @@ export class GameUI {
               }).join('')}
             </div>
           </section>
-          <p class="desktop-controls desktop-hint"><span><kbd>WASD</kbd> move</span><span>drag to look</span><span><kbd>E</kbd> hold to gather</span><span><kbd>Space</kbd> jump</span></p>
+          <p class="desktop-controls desktop-hint"><span><kbd>WASD</kbd> move</span><span>drag to look</span><span><kbd>E</kbd> <span data-ui="keyboard-action">hold to gather</span></span><span><kbd>Space</kbd> jump</span></p>
         </div>
 
         <aside class="settlement-panel paper-panel" id="settlement-panel" data-ui="settlement" aria-labelledby="settlement-title" hidden>
-          <header class="panel-heading"><h2 id="settlement-title">Your settlement</h2><button class="icon-button close-button" data-ui="close-settlement" type="button" aria-label="Close settlement" title="Close settlement">${icon('close')}</button></header>
+          <header class="panel-heading"><h2 id="settlement-title">Your settlement</h2><button class="icon-button close-button" data-ui="close-settlement" type="button" aria-label="Close settlement" title="Close settlement">${icon('close')}</button><p class="worker-guidance" data-ui="settlement-feedback" role="status">Assign workers or improve your buildings.</p></header>
           <div class="settlement-summary"><div><strong data-ui="idle-workers">3</strong><span>idle workers</span></div><div><strong data-ui="housing">3 / 3</strong><span>settlers / beds</span></div><div><strong data-ui="food-net">−1.4</strong><span>food / min</span></div></div>
           <div class="arrival-card">
             <div class="arrival-heading">${icon('people')}<strong data-ui="arrival-title">A little room to grow</strong></div>
@@ -241,12 +247,11 @@ export class GameUI {
             <small>One arrival every ${ARRIVAL_INTERVAL}s while ready. Up to ${MAX_POPULATION} settlers.</small>
           </div>
           <div class="building-list-heading"><h3>Places & people</h3><span data-ui="building-count">1 place</span></div>
-          <p class="worker-guidance">Assign idle settlers to keep your frontier growing.</p>
           <div class="building-list" data-ui="building-list"></div>
           <p class="settlement-footnote">Removing a building returns half its materials. Homes must have enough room for everyone.</p>
         </aside>
 
-        <div class="touch-controls" aria-label="Touch game controls">
+        <div class="touch-controls" data-ui="touch-controls" aria-label="Touch game controls">
           <div class="joystick-wrap"><div class="joystick-pad" data-ui="joystick" role="group" aria-label="Movement joystick. Drag in the direction you want to walk."><span class="joystick-cross"></span><span class="joystick-knob" data-ui="joystick-knob">${icon('compass')}</span></div><span class="touch-control-label">MOVE</span></div>
           <div class="touch-actions">
             <button class="touch-button touch-build" data-ui="touch-build" type="button" aria-label="Toggle build menu" aria-expanded="true" aria-controls="build-cards">${icon('hammer')}<span>Build</span></button>
@@ -268,7 +273,7 @@ export class GameUI {
             <div><dt><kbd>WASD</kbd> / arrows</dt><dd>Wander</dd></div><div><dt><kbd>Shift</kbd></dt><dd>Run</dd></div>
             <div><dt>Drag / scroll</dt><dd>Look / zoom</dd></div><div><dt>Hold <kbd>E</kbd></dt><dd>Gather nearby</dd></div>
             <div><dt><kbd>Space</kbd></dt><dd>Jump</dd></div><div><dt><kbd>B</kbd> / <kbd>1</kbd>–<kbd>4</kbd></dt><dd>Build menu / select</dd></div>
-            <div><dt><kbd>E</kbd> / <kbd>Q</kbd>, <kbd>R</kbd></dt><dd>Place / rotate</dd></div><div><dt><kbd>Esc</kbd></dt><dd>Cancel build / pause</dd></div>
+            <div><dt><kbd>E</kbd> / <kbd>Q</kbd>, <kbd>R</kbd></dt><dd>Place / rotate</dd></div><div><dt><kbd>Esc</kbd></dt><dd>Close current panel / pause</dd></div>
             <div><dt><kbd>T</kbd></dt><dd>Settlement & workers</dd></div><div><dt><kbd>V</kbd></dt><dd>Planet overview</dd></div>
           </dl>
           <p class="touch-hint">Drag the world to look around. Use the joystick to move, hold Gather near resources, and tap Build to make something new. Use Place and Rotate to position it.</p>
@@ -286,7 +291,11 @@ export class GameUI {
     this.game = this.ref('game')
     this.pauseDialog = this.ref<HTMLDialogElement>('pause-dialog')
     this.toastStack = this.ref('toasts')
+    this.layoutObserver = new ResizeObserver(() => this.updateLayoutBounds())
+    this.layoutObserver.observe(this.ref('topbar'))
+    this.layoutObserver.observe(this.ref('touch-controls'))
     text(this.ref('start-label'), options.hasSave ? 'Continue your frontier' : 'Begin your frontier')
+    if (options.savingAvailable === false) text(this.ref('welcome-save-status'), 'Local saving is unavailable in this browser.')
     if (options.loadError) {
       text(this.ref('load-warning'), options.loadError)
       this.ref('load-warning').hidden = false
@@ -299,6 +308,30 @@ export class GameUI {
     const element = this.refs.get(name)
     if (!element) throw new Error(`Missing interface element: ${name}`)
     return element as T
+  }
+
+  private updateLayoutBounds(): void {
+    const root = this.root.getBoundingClientRect()
+    const bounds = this.ref('topbar').getBoundingClientRect()
+    if (bounds.height > 0) {
+      const bottom = `${Math.ceil(bounds.bottom - root.top)}px`
+      if (this.root.style.getPropertyValue('--hud-bottom') !== bottom) this.root.style.setProperty('--hud-bottom', bottom)
+    }
+    const controls = this.ref('touch-controls').getBoundingClientRect()
+    if (controls.height > 0) {
+      const bottom = `${Math.ceil(root.bottom - controls.top + 10)}px`
+      if (this.root.style.getPropertyValue('--controls-bottom') !== bottom) this.root.style.setProperty('--controls-bottom', bottom)
+    }
+  }
+
+  dispose(): void {
+    this.lifecycle.abort()
+    this.layoutObserver.disconnect()
+    this.stopTouch()
+    for (const timer of this.toastTimers.values()) window.clearTimeout(timer)
+    window.clearTimeout(this.feedbackTimer)
+    this.toastTimers.clear()
+    if (this.pauseDialog.open) this.pauseDialog.close()
   }
 
   private bindActions(): void {
@@ -349,6 +382,7 @@ export class GameUI {
     this.welcome.hidden = true
     this.game.hidden = false
     this.root.classList.remove('is-welcome')
+    this.updateLayoutBounds()
   }
 
   update(state: GameState): void {
@@ -498,9 +532,11 @@ export class GameUI {
       const definition = BUILDINGS[building.type]
       const stats = getBuildingStats(building)
       const upgrade = getUpgradeInfo(state, building)
+      const upgradeFocused = document.activeElement === row.upgrade
       text(row.level, `Level ${building.level}`)
       row.element.dataset.level = String(building.level)
       row.upgrade.hidden = upgrade.nextLevel === null
+      if (upgrade.nextLevel === null && upgradeFocused) row.heading.focus({ preventScroll: true })
       row.upgrade.disabled = !upgrade.available
       text(row.upgrade, `Upgrade to level ${upgrade.nextLevel ?? building.level}`)
       row.upgrade.title = upgrade.reason || upgrade.benefit
@@ -536,7 +572,9 @@ export class GameUI {
     element.innerHTML = `<div class="building-row-top"><span class="building-row-art">${buildingArt(building.type)}</span><div class="building-row-copy"><h4></h4><span class="building-level"></span><p class="building-production"></p></div></div>
       <div class="building-row-bottom"><span class="worker-label">Workers</span><div class="worker-stepper"><button class="stepper-button worker-minus" type="button">${icon('minus')}</button><span class="worker-count"></span><button class="stepper-button worker-plus" type="button">${icon('plus')}</button></div></div>
       <div class="building-upgrade"><p class="upgrade-benefit"></p><div class="upgrade-costs" aria-label="Upgrade cost">${RESOURCES.map((resource) => `<span class="upgrade-cost" data-upgrade-cost="${resource}">${icon(resource)}<span></span><span class="sr-only">${RESOURCE_NAMES[resource]}</span></span>`).join('')}</div><p class="upgrade-reason"></p><button class="button button-light upgrade-building" type="button"></button></div>`
-    text(element.querySelector('h4')!, definition.name)
+    const heading = element.querySelector<HTMLHeadingElement>('h4')!
+    text(heading, definition.name)
+    heading.tabIndex = -1
     const minus = element.querySelector<HTMLButtonElement>('.worker-minus')!
     const plus = element.querySelector<HTMLButtonElement>('.worker-plus')!
     minus.setAttribute('aria-label', `Remove worker from ${definition.name}`)
@@ -546,6 +584,9 @@ export class GameUI {
     const upgrade = element.querySelector<HTMLButtonElement>('.upgrade-building')!
     upgrade.setAttribute('aria-label', `Upgrade ${definition.name}`)
     const descriptionId = `building-upgrade-${++this.rowSequence}`
+    const level = element.querySelector<HTMLElement>('.building-level')!
+    level.id = `${descriptionId}-level`
+    heading.setAttribute('aria-describedby', level.id)
     upgrade.setAttribute('aria-describedby', `${descriptionId}-benefit ${descriptionId}-reason`)
     const upgradeBenefit = element.querySelector<HTMLElement>('.upgrade-benefit')!
     const upgradeReason = element.querySelector<HTMLElement>('.upgrade-reason')!
@@ -568,9 +609,9 @@ export class GameUI {
       element.querySelector('.building-row-top')!.append(remove)
     }
     return {
-      element, type: building.type,
+      element, type: building.type, heading,
       production: element.querySelector<HTMLElement>('.building-production')!,
-      level: element.querySelector<HTMLElement>('.building-level')!,
+      level,
       upgrade, upgradeBenefit, upgradeReason, upgradeCosts,
       workers: element.querySelector<HTMLElement>('.worker-count')!,
       minus, plus,
@@ -592,6 +633,7 @@ export class GameUI {
     const previous = this.selectedBuild
     const focusInPlacement = this.ref('placement').contains(document.activeElement)
     this.selectedBuild = type
+    text(this.ref('keyboard-action'), type ? 'place building' : 'hold to gather')
     this.root.classList.toggle('is-building', type !== null)
     this.root.querySelectorAll<HTMLButtonElement>('[data-build]').forEach((button) => {
       const selected = button.dataset.build === type
@@ -633,36 +675,101 @@ export class GameUI {
     this.ref('build-dock').classList.toggle('is-collapsed', !open)
     this.ref('build-toggle').setAttribute('aria-expanded', String(open))
     this.ref('touch-build').setAttribute('aria-expanded', String(open))
-    if (!open && focusInCards) this.ref('build-toggle').focus({ preventScroll: true })
+    if (!open && focusInCards) {
+      this.ref(window.matchMedia('(pointer: coarse)').matches ? 'touch-build' : 'build-toggle').focus({ preventScroll: true })
+    }
   }
 
   showToast(message: string, kind: 'success' | 'info' | 'error' = 'info'): void {
-    while (this.toastTimers.size >= 3) this.dismissToast(this.toastTimers.keys().next().value!)
+    if (this.settlementOpen && !this.paused) {
+      this.showPanelFeedback(message, kind)
+      return
+    }
+    const existing = Array.from(this.toastTimers.keys()).find((toast) => toast.dataset.message === message && toast.dataset.kind === kind)
+    if (existing) {
+      this.scheduleToast(existing)
+      return
+    }
+    while (this.toastTimers.size >= 3) {
+      const oldest = Array.from(this.toastTimers.keys()).find((toast) => !toast.contains(document.activeElement))
+      this.dismissToast(oldest ?? this.toastTimers.keys().next().value!)
+    }
     const toast = document.createElement('div')
     toast.className = `toast toast-${kind}`
+    toast.dataset.message = message
+    toast.dataset.kind = kind
     toast.innerHTML = `${icon(kind === 'success' ? 'check' : kind === 'error' ? 'warning' : 'leaf')}<p></p><button class="toast-dismiss" type="button" aria-label="Dismiss notification">${icon('close')}</button>`
     text(toast.querySelector('p')!, message)
     toast.querySelector('button')!.addEventListener('click', () => this.dismissToast(toast))
+    const hold = () => {
+      window.clearTimeout(this.toastTimers.get(toast))
+      this.toastTimers.set(toast, undefined)
+    }
+    toast.addEventListener('pointerenter', hold)
+    toast.addEventListener('focusin', hold)
+    toast.addEventListener('pointerleave', () => this.scheduleToast(toast))
+    toast.addEventListener('focusout', () => queueMicrotask(() => this.scheduleToast(toast)))
+    toast.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        this.dismissToast(toast)
+      }
+    })
     this.toastStack.append(toast)
-    this.toastTimers.set(toast, window.setTimeout(() => this.dismissToast(toast), kind === 'error' ? 8000 : 5000))
+    this.scheduleToast(toast)
+  }
+
+  private scheduleToast(toast: HTMLElement): void {
+    window.clearTimeout(this.toastTimers.get(toast))
+    if (this.lifecycle.signal.aborted || !toast.isConnected) return
+    const held = toast.matches(':hover') || toast.contains(document.activeElement)
+    this.toastTimers.set(toast, held ? undefined
+      : window.setTimeout(() => this.dismissToast(toast), toast.dataset.kind === 'error' ? 8000 : 5000))
   }
 
   private dismissToast(toast: HTMLElement): void {
+    const focused = toast.contains(document.activeElement)
     window.clearTimeout(this.toastTimers.get(toast))
     this.toastTimers.delete(toast)
     toast.remove()
+    if (focused) {
+      const target = this.paused ? this.ref('resume')
+        : this.settlementOpen ? this.ref('close-settlement') : document.querySelector<HTMLElement>('#world')
+      target?.focus({ preventScroll: true })
+    }
+  }
+
+  private showPanelFeedback(message: string, kind: 'success' | 'info' | 'error'): void {
+    const feedback = this.ref('settlement-feedback')
+    window.clearTimeout(this.feedbackTimer)
+    text(feedback, message)
+    feedback.classList.toggle('is-negative', kind === 'error')
+    this.feedbackTimer = window.setTimeout(() => {
+      text(feedback, 'Assign workers or improve your buildings.')
+      feedback.classList.remove('is-negative')
+    }, kind === 'error' ? 8000 : 5000)
   }
 
   setSavingStatus(value: string): void {
+    text(this.ref('welcome-save-status'), value)
     text(this.ref('saving-status'), value)
     text(this.ref('pause-save-status'), value)
   }
 
   showSettlement(open: boolean): void {
+    this.settlementOpen = open
+    if (open) this.stopTouch()
     const panel = this.ref('settlement')
     const wasOpen = !panel.hidden
     const focusInPanel = panel.contains(document.activeElement)
     panel.hidden = !open
+    if (open && !wasOpen) {
+      const latest = Array.from(this.toastTimers.keys()).at(-1)
+      if (latest?.dataset.message) {
+        this.showPanelFeedback(latest.dataset.message, latest.classList.contains('toast-error') ? 'error' : 'info')
+      }
+      for (const toast of Array.from(this.toastTimers.keys())) this.dismissToast(toast)
+    }
     this.root.classList.toggle('settlement-open', open)
     this.ref('settlement-toggle').setAttribute('aria-expanded', String(open))
     if (open && !wasOpen && this.started && !this.paused) this.ref('close-settlement').focus({ preventScroll: true })
@@ -697,6 +804,13 @@ export class GameUI {
     button.innerHTML = icon(enabled ? 'sound' : 'muted')
   }
 
+  setSoundPending(pending: boolean): void {
+    const button = this.ref<HTMLButtonElement>('sound')
+    button.disabled = pending
+    button.setAttribute('aria-busy', String(pending))
+    button.title = pending ? 'Updating sound...' : button.getAttribute('aria-label') || 'Sound'
+  }
+
   setOverview(active: boolean): void {
     this.root.classList.toggle('is-overview', active)
     const button = this.ref('overview')
@@ -720,7 +834,7 @@ export class GameUI {
   }
 
   private canUseTouch(): boolean {
-    return this.started && !this.paused && !this.fatal
+    return this.started && !this.paused && !this.fatal && !this.settlementOpen
   }
 
   private bindTouch(): void {
@@ -780,8 +894,8 @@ export class GameUI {
       if (event.code === 'Space' || event.code === 'Enter') this.stopGathering()
     })
     gather.addEventListener('blur', () => this.stopGathering())
-    window.addEventListener('blur', () => this.stopTouch())
-    document.addEventListener('visibilitychange', () => { if (document.hidden) this.stopTouch() })
+    window.addEventListener('blur', () => this.stopTouch(), { signal: this.lifecycle.signal })
+    document.addEventListener('visibilitychange', () => { if (document.hidden) this.stopTouch() }, { signal: this.lifecycle.signal })
   }
 
   private stopJoystick(): void {
