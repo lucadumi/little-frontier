@@ -65,6 +65,8 @@ function bootstrap(): void {
   let started = false
   let paused = false
   let buildMenuOpen = true
+  let overviewActive = false
+  let buildMenuBeforeOverview = true
   let settlementOpen = false
   let saveErrorShown = false
   let needsSaveReplacementConsent = loaded.unreadableSave
@@ -110,6 +112,7 @@ function bootstrap(): void {
 
   const toggleBuildMenu = () => {
     buildMenuOpen = !buildMenuOpen
+    if (overviewActive) buildMenuBeforeOverview = buildMenuOpen
     ui.setBuildMenu(buildMenuOpen)
     if (!buildMenuOpen) engine.selectBuilding(null)
   }
@@ -202,6 +205,7 @@ function bootstrap(): void {
       onInteraction: (prompt) => ui.setInteraction(prompt),
       onPlacement: (message, valid) => ui.setPlacementStatus(message, valid),
       onBuildChange(type) {
+        if (type && overviewActive) engine.toggleOverview()
         ui.setBuildSelection(type)
         if (type && !buildMenuOpen) {
           buildMenuOpen = true
@@ -211,7 +215,19 @@ function bootstrap(): void {
       onBuildMenuToggle: toggleBuildMenu,
       onPauseToggle: () => setPaused(!paused),
       onSettlementToggle: toggleSettlement,
-      onOverviewChange: (active) => ui.setOverview(active),
+      onOverviewChange(active) {
+        if (active === overviewActive) return
+        overviewActive = active
+        ui.setOverview(active)
+        if (active) {
+          buildMenuBeforeOverview = buildMenuOpen
+          buildMenuOpen = false
+          engine.selectBuilding(null)
+        } else {
+          buildMenuOpen = buildMenuBeforeOverview
+        }
+        ui.setBuildMenu(buildMenuOpen)
+      },
       onSound: (kind) => sound.play(kind),
       onFatal(message) {
         const saved = save()

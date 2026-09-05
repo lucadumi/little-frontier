@@ -2,7 +2,8 @@ import { expect, test } from '@playwright/test'
 import type { Page } from '@playwright/test'
 import type {} from '../src/main.ts'
 import { createInitialState, serializeSave } from '../src/game/simulation.ts'
-import { SAVE_KEY } from '../src/game/config.ts'
+import { PLANET_RADIUS, SAVE_KEY } from '../src/game/config.ts'
+import { sphereFramingDistance } from '../src/game/math.ts'
 
 async function snapshot(page: Page) {
   return page.evaluate(() => {
@@ -23,6 +24,7 @@ async function begin(page: Page) {
   await expect.poll(async () => (await diagnostics(page)).drawCalls).toBeGreaterThan(10)
   await page.getByRole('button', { name: /begin your frontier|continue your frontier/i }).click()
   await expect.poll(async () => (await diagnostics(page)).started).toBe(true)
+  await expect.poll(async () => (await diagnostics(page)).cameraDistance).toBeLessThan(9.5)
 }
 
 test('renders an original planet and moves the explorer with radial gravity', async ({ page }) => {
@@ -52,10 +54,9 @@ test('gathers wood, builds a garden, and lets the player assign a grower', async
   await begin(page)
   await page.keyboard.down('w')
   await page.keyboard.down('a')
-  await page.waitForTimeout(480)
+  await expect.poll(async () => (await diagnostics(page)).nearestNode?.kind).toBe('tree')
   await page.keyboard.up('w')
   await page.keyboard.up('a')
-  await expect.poll(async () => (await diagnostics(page)).nearestNode?.kind).toBe('tree')
   await page.keyboard.down('e')
   await expect.poll(async () => (await snapshot(page)).stats.gathered.wood).toBe(12)
   await page.keyboard.up('e')
@@ -143,5 +144,52 @@ test.describe('small touch screens', () => {
     await expect(page.locator('#world')).toBeVisible()
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390)
     await page.screenshot({ path: test.info().outputPath('touch-layout.png') })
+  })
+
+  test('lets the explorer walk slowly with a small joystick movement', async ({ page }) => {
+    await begin(page)
+    const joystick = page.locator('[data-ui="joystick"]')
+    const bounds = await joystick.boundingBox()
+    if (!bounds) throw new Error('The touch movement control is not visible.')
+    const x = bounds.x + bounds.width / 2
+    const y = bounds.y + bounds.height / 2
+    const sampleSpeed = async (deflection: number) => {
+      await page.mouse.move(x, y)
+      await page.mouse.down()
+      await page.mouse.move(x + deflection, y)
+      const before = await snapshot(page)
+      await expect.poll(async () => (await snapshot(page)).time - before.time).toBeGreaterThan(0.9)
+      await page.mouse.up()
+      const after = await snapshot(page)
+      const dot = before.player.normal.reduce((sum, value, index) => sum + value * after.player.normal[index], 0)
+      return Math.acos(Math.max(-1, Math.min(1, dot))) * PLANET_RADIUS / (after.time - before.time)
+    }
+    const careful = await sampleSpeed(12)
+    const full = await sampleSpeed(bounds.width / 2)
+    expect(careful).toBeGreaterThan(0.1)
+    expect(full).toBeGreaterThan(2.5)
+    expect(careful).toBeLessThan(full * 0.7)
+    const released = await snapshot(page)
+    await page.waitForTimeout(300)
+    expect((await snapshot(page)).player.normal).toEqual(released.player.normal)
+  })
+
+  test('frames the whole planet on a portrait screen and restores the build dock', async ({ page }) => {
+    await begin(page)
+    const dockToggle = page.locator('[data-ui="build-toggle"]')
+    await expect(dockToggle).toHaveAttribute('aria-expanded', 'true')
+    await page.keyboard.press('v')
+    const framingDistance = sphereFramingDistance(PLANET_RADIUS + 4, 48, 390 / 844)
+    await expect.poll(async () => (await diagnostics(page)).planetDistance).toBeGreaterThan(framingDistance * 0.99)
+    await expect(dockToggle).toHaveAttribute('aria-expanded', 'false')
+    await page.screenshot({ path: test.info().outputPath('portrait-planet.png') })
+    await page.keyboard.press('v')
+    await expect.poll(async () => (await diagnostics(page)).cameraDistance).toBeLessThan(9.5)
+    await expect(dockToggle).toHaveAttribute('aria-expanded', 'true')
+    await page.keyboard.press('v')
+    await page.keyboard.press('1')
+    await expect.poll(async () => (await diagnostics(page)).overview).toBe(false)
+    await expect.poll(async () => (await diagnostics(page)).selectedBuild).toBe('cottage')
+    await expect(dockToggle).toHaveAttribute('aria-expanded', 'true')
   })
 })

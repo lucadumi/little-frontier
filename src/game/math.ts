@@ -19,6 +19,16 @@ export function smoothstep(low: number, high: number, value: number): number {
   return t * t * (3 - 2 * t)
 }
 
+export function sphereFramingDistance(radius: number, verticalFov: number, aspect: number): number {
+  if (!Number.isFinite(radius) || radius <= 0 || !Number.isFinite(verticalFov)
+    || verticalFov <= 0 || verticalFov >= 180 || !Number.isFinite(aspect) || aspect <= 0) {
+    throw new RangeError('Framing a sphere requires a positive radius, a valid field of view, and a positive aspect ratio.')
+  }
+  const verticalHalfAngle = verticalFov * Math.PI / 360
+  const horizontalHalfAngle = Math.atan(Math.tan(verticalHalfAngle) * aspect)
+  return radius * 1.12 / Math.sin(Math.min(verticalHalfAngle, horizontalHalfAngle))
+}
+
 export function terrainHeight(normal: Vector3): number {
   const { x, y, z } = normal
   const continents = Math.sin(x * 3.8 - 0.4) * Math.cos(z * 3.2 + 0.5)

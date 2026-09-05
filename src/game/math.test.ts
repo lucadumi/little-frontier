@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { Vector3 } from 'three'
 import { PLANET_RADIUS } from './config.ts'
-import { advanceOnSphere, mapNormal, seededRandom, surfaceDistance, surfaceQuaternion, surfaceRadius, tangentForward } from './math.ts'
+import { advanceOnSphere, mapNormal, seededRandom, sphereFramingDistance, surfaceDistance, surfaceQuaternion, surfaceRadius, tangentForward } from './math.ts'
 
 test('walking a complete great circle returns to the starting point without losing radial gravity', () => {
   let normal = new Vector3(0, 1, 0)
@@ -45,5 +45,24 @@ test('deterministic scenery and traversable surfaces are stable', () => {
     assert.equal(a(), b())
     const radius = surfaceRadius(mapNormal(i - 50, i * 0.3))
     assert.ok(Number.isFinite(radius) && radius > PLANET_RADIUS - 0.2)
+  }
+})
+
+test('planet framing fits both axes in portrait and landscape viewports', () => {
+  const radius = PLANET_RADIUS + 4
+  for (const aspect of [390 / 844, 320 / 1100, 1, 1440 / 900, 2.4]) {
+    const distance = sphereFramingDistance(radius, 48, aspect)
+    const angularRadius = Math.asin(radius / distance)
+    const verticalHalfAngle = 48 * Math.PI / 360
+    const horizontalHalfAngle = Math.atan(Math.tan(verticalHalfAngle) * aspect)
+    assert.ok(angularRadius < verticalHalfAngle)
+    assert.ok(angularRadius < horizontalHalfAngle)
+  }
+  assert.ok(sphereFramingDistance(radius, 48, 390 / 844) > sphereFramingDistance(radius, 48, 1440 / 900))
+})
+
+test('planet framing rejects invalid camera parameters', () => {
+  for (const [radius, fov, aspect] of [[0, 48, 1], [22, 180, 1], [22, 0, 1], [22, 48, 0], [22, 48, Infinity]]) {
+    assert.throws(() => sphereFramingDistance(radius, fov, aspect), RangeError)
   }
 })

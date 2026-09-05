@@ -33,7 +33,9 @@ Open the local URL printed by Vite. A browser with WebGL 2 and hardware accelera
 | Open the settlement panel | T |
 | Switch between close and planet views | V |
 
-Touch devices have a movement stick, gather and jump buttons, and drag-to-look camera controls.
+Touch devices have an analog movement stick, gather and jump buttons, and drag-to-look camera controls. Move the stick a little for careful positioning or to its edge for full walking speed.
+
+Planet view fits the globe to both portrait and landscape screens and temporarily folds the build dock away. Returning to your explorer restores the dock; selecting a building also returns to the close view.
 
 ## Growing a settlement
 

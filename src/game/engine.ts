@@ -5,7 +5,7 @@ import {
   Vector3, WebGLRenderer,
 } from 'three'
 import { BUILDABLE_TYPES, BUILDINGS, DAY_LENGTH, HEARTH_NORMAL, NODE_DEFINITIONS, PLANET_RADIUS } from './config.ts'
-import { advanceOnSphere, isWater, surfaceDistance, surfacePoint, surfaceQuaternion, surfaceRadius, tangentForward } from './math.ts'
+import { advanceOnSphere, isWater, sphereFramingDistance, surfaceDistance, surfacePoint, surfaceQuaternion, surfaceRadius, tangentForward } from './math.ts'
 import { animateCharacter, createBuildingModel, createCharacterModel, createSelectionRing, disposeModel } from './models.ts'
 import type { CharacterRig } from './models.ts'
 import { canAfford, gatherResource, getNodeStatus, placeBuilding, tick } from './simulation.ts'
@@ -192,6 +192,9 @@ export class GameEngine {
     }
     this.villagers.length = 0
     this.restorePlayer()
+    this.overview = false
+    this.targetDistance = 9
+    this.events.onOverviewChange(false)
     this.syncBuildings()
     this.world.refreshResources(state)
     this.nearest = null
@@ -310,6 +313,9 @@ export class GameEngine {
     placementValid: boolean
     drawCalls: number
     triangles: number
+    cameraDistance: number
+    planetDistance: number
+    overview: boolean
     started: boolean
     paused: boolean
   } {
@@ -318,6 +324,8 @@ export class GameEngine {
       nearestNode: this.nearest ? structuredClone(this.nearest) : null,
       selectedBuild: this.selectedBuild, placementValid: this.placementValid,
       drawCalls: this.renderer.info.render.calls, triangles: this.renderer.info.render.triangles,
+      cameraDistance: this.distance,
+      planetDistance: this.camera.position.length(), overview: this.overview,
       started: this.started, paused: this.paused,
     }
   }
@@ -455,6 +463,7 @@ export class GameEngine {
     const width = window.innerWidth
     const height = window.innerHeight
     this.camera.aspect = width / height
+    this.camera.far = Math.max(220, sphereFramingDistance(PLANET_RADIUS + 4, this.camera.fov, this.camera.aspect) + PLANET_RADIUS * 3)
     this.camera.updateProjectionMatrix()
     this.renderer.setSize(width, height)
   }
@@ -466,11 +475,9 @@ export class GameEngine {
     this.visualTime += delta
     const active = this.started && !this.paused
     if (active) {
-      let remaining = delta
-      while (remaining > 0) {
-        const step = Math.min(remaining, 0.05)
-        this.updatePlayer(step)
-        remaining -= step
+      if (delta > 0) {
+        const steps = Math.ceil(delta / 0.05)
+        for (let step = 0; step < steps; step++) this.updatePlayer(delta / steps)
       }
       const simulationEvents = tick(this.state, delta)
       for (const event of simulationEvents) {
@@ -514,17 +521,21 @@ export class GameEngine {
       - Number(this.keys.has('KeyS') || this.keys.has('ArrowDown')) + this.movement.y
     const right = new Vector3().crossVectors(this.cameraForward, this.normal).normalize()
     const direction = this.cameraForward.clone().multiplyScalar(y).addScaledVector(right, x)
+    const inputLength = Math.hypot(x, y)
+    const inputStrength = Math.min(1, inputLength)
     this.movingSpeed = 0
     if (direction.lengthSq() > 0.001) {
       direction.normalize()
       const sprint = this.keys.has('ShiftLeft') || this.keys.has('ShiftRight')
-      const speed = (sprint ? 5.8 : 3.6) * (isWater(this.normal) ? 0.52 : 1)
+      const topSpeed = (sprint ? 5.8 : 3.6) * (isWater(this.normal) ? 0.52 : 1)
+      const speed = topSpeed * inputStrength
       let moved = advanceOnSphere(this.normal, direction, speed * delta)
       if (this.collides(moved.normal)) {
         let accepted = false
-        for (const component of [this.cameraForward.clone().multiplyScalar(y), right.clone().multiplyScalar(x)]) {
+        const scale = Math.max(1, inputLength)
+        for (const component of [this.cameraForward.clone().multiplyScalar(y / scale), right.clone().multiplyScalar(x / scale)]) {
           if (component.lengthSq() < 0.001) continue
-          const alternative = advanceOnSphere(this.normal, component, speed * delta * 0.75)
+          const alternative = advanceOnSphere(this.normal, component, topSpeed * delta * component.length())
           if (!this.collides(alternative.normal)) {
             moved = alternative
             direction.copy(component).normalize()
@@ -572,20 +583,24 @@ export class GameEngine {
   private updateCamera(delta: number): void {
     const smoothing = 1 - Math.exp(-delta * 4)
     const desired = new Vector3()
+    const framingDistance = sphereFramingDistance(PLANET_RADIUS + 4, this.camera.fov, this.camera.aspect)
     if (!this.started) {
       const angle = this.visualTime * 0.045 + 0.42
       desired.set(Math.sin(angle) * 28, 50, Math.cos(angle) * 35)
-      this.cameraTarget.set(-7, 0, 0)
+      desired.setLength(Math.max(desired.length(), framingDistance))
+      this.cameraTarget.set(this.camera.aspect > 1 ? -7 : 0, 0, 0)
       this.cameraUp.set(0, 1, 0)
     } else {
       this.distance += (this.targetDistance - this.distance) * smoothing
       const overviewBlend = Math.max(0, Math.min(1, (this.distance - 15) / 25))
-      const target = surfacePoint(this.normal, 0.85).multiplyScalar(1 - overviewBlend * 0.92)
+      const target = surfacePoint(this.normal, 0.85).multiplyScalar(1 - overviewBlend)
       this.cameraTarget.lerp(target, smoothing)
       const pitch = this.pitch + overviewBlend * 0.2
       desired.copy(surfacePoint(this.normal, 1.2))
         .addScaledVector(this.cameraForward, -Math.cos(pitch) * this.distance)
         .addScaledVector(this.normal, Math.sin(pitch) * this.distance)
+      const framedDistance = Math.max(desired.length(), framingDistance * Math.max(1, this.distance / 43))
+      desired.setLength(desired.length() * (1 - overviewBlend) + framedDistance * overviewBlend)
       this.cameraUp.lerp(this.normal, 1 - Math.exp(-delta * 8)).normalize()
     }
     this.camera.position.lerp(desired, this.started ? 1 - Math.exp(-delta * 8) : 1)
@@ -601,7 +616,11 @@ export class GameEngine {
     const daylight = Math.max(0, Math.min(1, Math.cos(phase - 0.4) * 1.4 + 0.4))
     const sky = new Color(0x536b86).lerp(new Color(0xc6dfe0), daylight)
     if (this.scene.background instanceof Color) this.scene.background.copy(sky)
-    if (this.scene.fog instanceof Fog) this.scene.fog.color.copy(sky)
+    if (this.scene.fog instanceof Fog) {
+      this.scene.fog.color.copy(sky)
+      this.scene.fog.near = Math.max(80, this.camera.position.length() + 35)
+      this.scene.fog.far = this.scene.fog.near + 85
+    }
     this.ambient.intensity = 1.3 + daylight * 1.1
     this.sun.intensity = 0.8 + daylight * 2.5
     const right = new Vector3().crossVectors(this.cameraForward, this.normal).normalize()
