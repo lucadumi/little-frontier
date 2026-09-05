@@ -136,9 +136,8 @@ export class GameUI {
     container.classList.add('frontier-ui', 'is-welcome', 'build-menu-open')
     container.innerHTML = `
       <section class="welcome" data-ui="welcome" aria-labelledby="welcome-title">
-        <div class="welcome-brand">${BRAND_MARK}<span>Little Frontier<span class="brand-subtitle">A WORLD WORTH TENDING</span></span></div>
+        <div class="welcome-brand">${BRAND_MARK}<span>Little Frontier</span></div>
         <div class="welcome-content">
-          <p class="eyebrow"><span class="tiny-sun"></span> YOUR OWN LITTLE WORLD</p>
           <h1 id="welcome-title">A little world.<br><em>A big beginning.</em></h1>
           <p class="welcome-description">Wander a living little planet. Gather what nature gives, build a place to belong, and help a handful of settlers feel at home.</p>
           <ul class="welcome-tags" aria-label="Explore, gather, and grow">
@@ -158,7 +157,7 @@ export class GameUI {
 
       <div class="game-interface" data-ui="game" hidden>
         <header class="topbar">
-          <div class="hud-brand">${BRAND_MARK}<div><span class="brand-name">Little Frontier</span><span class="brand-subtitle">THE MEADOWLANDS</span></div></div>
+          <div class="hud-brand">${BRAND_MARK}<div><span class="brand-name">Little Frontier</span><span class="brand-subtitle">Meadowlands</span></div></div>
           <div class="hud-center">
             <div class="resource-strip" role="group" aria-label="Settlement resources">
               ${RESOURCES.map((resource) => `<div class="resource-pill resource-${resource}" data-ui="resource-${resource}">
@@ -180,8 +179,7 @@ export class GameUI {
         </header>
 
         <section class="quest-panel paper-panel" aria-labelledby="quest-title">
-          <div class="quest-eyebrow">${icon('flag')}<span class="eyebrow">A LITTLE DIRECTION</span><span class="quest-count" data-ui="quest-count">0 / 5</span></div>
-          <h2 id="quest-title" data-ui="quest-title">A handful of possibilities</h2>
+          <div class="quest-heading"><h2 id="quest-title" data-ui="quest-title">A handful of possibilities</h2><span class="quest-count" data-ui="quest-count">0 / 5</span></div>
           <p class="quest-description" data-ui="quest-description">Gather 12 wood by hand from meadow trees.</p>
           <p class="quest-next-progress" data-ui="quest-next-progress"></p>
           <div class="quest-progress" data-ui="quest-progress" role="progressbar" aria-label="Completed milestones" aria-valuemin="0" aria-valuemax="5" aria-valuenow="0"><i></i><i></i><i></i><i></i><i></i></div>
@@ -191,7 +189,7 @@ export class GameUI {
         <div class="bottom-zone">
           <div class="context-area">
             <section class="placement-panel paper-panel" data-ui="placement" aria-label="Building placement" hidden>
-              <div class="placement-heading"><span class="placement-symbol">${icon('hammer')}</span><div><span class="eyebrow">FIND A GOOD SPOT</span><strong data-ui="placement-name">Place a building</strong></div></div>
+              <div class="placement-heading"><span class="placement-symbol">${icon('hammer')}</span><strong data-ui="placement-name">Place a building</strong></div>
               <p class="placement-status" data-ui="placement-status" role="status">Choose a clear patch of land.</p>
               <div class="placement-actions">
                 <button class="button button-primary" data-ui="place" type="button" disabled>${icon('check')}Place <kbd class="desktop-hint">E</kbd></button>
@@ -206,11 +204,11 @@ export class GameUI {
             <p class="explore-hint" data-ui="explore-hint">${icon('compass')}Walk up to a tree, stone, or berry bush to gather.</p>
           </div>
           <section class="build-dock paper-panel" data-ui="build-dock" aria-label="Construction">
-            <div class="dock-header"><button class="dock-toggle" data-ui="build-toggle" type="button" aria-expanded="true" aria-controls="build-cards">${icon('hammer')}Build <kbd class="desktop-hint">B</kbd>${icon('chevron')}</button><span class="dock-caption">MAKE YOURSELF AT HOME</span></div>
+            <div class="dock-header"><button class="dock-toggle" data-ui="build-toggle" type="button" aria-expanded="true" aria-controls="build-cards">${icon('hammer')}Build <kbd class="desktop-hint">B</kbd>${icon('chevron')}</button><span class="dock-context">Rates per worker</span></div>
             <div class="build-cards" id="build-cards" data-ui="build-cards">
               ${BUILDABLE_TYPES.map((type, index) => {
                 const definition = BUILDINGS[type]
-                const benefit = definition.beds ? `${definition.beds} cozy beds` : `${rate(Math.max(...Object.values(definition.production)) * 60).replace('+', '')} ${RESOURCES.find((resource) => definition.production[resource] > 0)} / worker / min`
+                const benefit = definition.beds ? `${definition.beds} beds` : `${rate(Math.max(...Object.values(definition.production)) * 60).replace('+', '')} ${RESOURCES.find((resource) => definition.production[resource] > 0)} / min`
                 return `<button class="build-card" data-build="${type}" type="button" aria-pressed="false">
                   <kbd class="build-shortcut desktop-hint">${index + 1}</kbd><span class="build-selected-mark">${icon('check')}</span>
                   <span class="build-illustration">${buildingArt(type)}</span>
@@ -224,7 +222,7 @@ export class GameUI {
         </div>
 
         <aside class="settlement-panel paper-panel" id="settlement-panel" data-ui="settlement" aria-labelledby="settlement-title" hidden>
-          <header class="panel-heading"><div><p class="eyebrow">GROWING TOGETHER</p><h2 id="settlement-title">Your settlement</h2></div><button class="icon-button close-button" data-ui="close-settlement" type="button" aria-label="Close settlement" title="Close settlement">${icon('close')}</button></header>
+          <header class="panel-heading"><h2 id="settlement-title">Your settlement</h2><button class="icon-button close-button" data-ui="close-settlement" type="button" aria-label="Close settlement" title="Close settlement">${icon('close')}</button></header>
           <div class="settlement-summary"><div><strong data-ui="idle-workers">3</strong><span>idle workers</span></div><div><strong data-ui="housing">3 / 3</strong><span>settlers / beds</span></div><div><strong data-ui="food-net">−1.4</strong><span>food / min</span></div></div>
           <div class="arrival-card">
             <div class="arrival-heading">${icon('people')}<strong data-ui="arrival-title">A little room to grow</strong></div>
@@ -254,8 +252,7 @@ export class GameUI {
       </div>
 
       <dialog class="pause-dialog" data-ui="pause-dialog" aria-labelledby="pause-title" aria-describedby="pause-description">
-        <div class="pause-mark">${BRAND_MARK}</div><p class="eyebrow">FRONTIER PAUSED</p>
-        <h2 id="pause-title">A moment of quiet.</h2><p id="pause-description">Your little world will wait right here.</p>
+        <h2 id="pause-title">Your frontier is paused.</h2><p id="pause-description">Your little world will wait right here.</p>
         <div class="pause-actions"><button class="button button-primary" data-ui="resume" type="button" autofocus>Resume ${icon('arrow')}</button><button class="button button-light" data-ui="save" type="button">${icon('save')}Save now</button></div>
         <p class="pause-save-status" data-ui="pause-save-status">Progress autosaves on this device.</p>
         <details class="help-details"><summary>How to feel at home ${icon('chevron')}</summary>
@@ -660,6 +657,7 @@ export class GameUI {
   }
 
   setOverview(active: boolean): void {
+    this.root.classList.toggle('is-overview', active)
     const button = this.ref('overview')
     button.setAttribute('aria-pressed', String(active))
     button.setAttribute('aria-label', active ? 'Return to your explorer' : 'Planet overview')
